@@ -1,0 +1,42 @@
+# MRI Brain Tumor Segmentation — YOLOv11-seg
+task: segment
+
+data: ml/data/mri_segmentation/data.yaml
+model: yolo26n-seg.pt          # swap to yolo11m-seg.pt for production
+
+epochs: 100
+imgsz: 640
+batch: 16
+lr0: 0.01
+lrf: 0.01
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 3
+patience: 20
+dropout: 0.0
+
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+degrees: 10.0
+translate: 0.1
+scale: 0.5
+flipud: 0.1
+fliplr: 0.5
+mosaic: 1.0
+copy_paste: 0.1
+
+project: runs/mri_segmentation
+name: train
+save: true
+save_period: 10
+
+clearml_project: MedVision/MRI-Segmentation
+clearml_task: train-yolo11-seg
+
+nc: 4
+names:
+  0: GLIOMA
+  1: MENINGIOMA
+  2: NOTUMOR
+  3: PITUITARY

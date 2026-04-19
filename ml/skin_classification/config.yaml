@@ -1,0 +1,44 @@
+# Skin Lesion Detection/Classification — YOLOv11 detection
+task: detect
+
+data: ml/data/skin_classification/data.yaml
+model: yolo26n.pt              # swap to yolo11m.pt for production
+
+epochs: 100
+imgsz: 640
+batch: 16
+lr0: 0.001
+lrf: 0.01
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 5
+patience: 25
+dropout: 0.0
+
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+degrees: 15.0
+translate: 0.1
+scale: 0.5
+flipud: 0.5
+fliplr: 0.5
+mosaic: 1.0
+
+project: runs/skin_classification
+name: train
+save: true
+save_period: 10
+
+clearml_project: MedVision/Skin-Classification
+clearml_task: train-yolo11-det
+
+nc: 7
+names:
+  0: akiec
+  1: bcc
+  2: bkl
+  3: df
+  4: mel
+  5: nv
+  6: vasc

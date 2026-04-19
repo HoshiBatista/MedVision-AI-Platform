@@ -1,0 +1,39 @@
+task: detect
+
+data: ml/data/pneumonia_detection/data.yaml
+model: yolo26n.pt              
+
+epochs: 100
+imgsz: 640
+batch: 32
+lr0: 0.01
+lrf: 0.01
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 3
+patience: 20
+dropout: 0.0
+
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+degrees: 5.0
+translate: 0.1
+scale: 0.5
+flipud: 0.0
+fliplr: 0.5
+mosaic: 1.0
+
+project: runs/pneumonia_detection
+name: train
+save: true
+save_period: 10
+
+clearml_project: MedVision/Pneumonia-Detection
+clearml_task: train-yolo11-det
+
+nc: 3
+names:
+  0: Atypical
+  1: Indeterminate
+  2: Typical
