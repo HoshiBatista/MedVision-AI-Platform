@@ -11,9 +11,11 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from statistics import mean, median, stdev
-
 import numpy as np
+import onnxruntime as ort
+from statistics import mean, median, stdev
+from ultralytics import YOLO
+
 
 ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT / "ml"))
@@ -31,7 +33,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def benchmark_pytorch(weights: str, imgsz: int, batch: int, runs: int, warmup: int) -> None:
-    from ultralytics import YOLO
     model = YOLO(weights)
 
     dummy = np.random.randint(0, 255, (imgsz, imgsz, 3), dtype=np.uint8)
@@ -52,8 +53,6 @@ def benchmark_pytorch(weights: str, imgsz: int, batch: int, runs: int, warmup: i
 
 
 def benchmark_onnx(weights: str, imgsz: int, batch: int, runs: int, warmup: int) -> None:
-    import onnxruntime as ort
-
     sess = ort.InferenceSession(weights, providers=["CPUExecutionProvider"])
     inp_name = sess.get_inputs()[0].name
 
