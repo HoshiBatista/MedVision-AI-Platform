@@ -1,19 +1,23 @@
+import time
 import uuid
 
 from passlib.context import CryptContext
 from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.core.metrics import AUTH_PASSWORD_HASH_DURATION
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    with AUTH_PASSWORD_HASH_DURATION.time():
+        return pwd_context.hash(plain)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    with AUTH_PASSWORD_HASH_DURATION.time():
+        return pwd_context.verify(plain, hashed)
 
 
 async def create_session(redis: Redis, user_id: int) -> str:

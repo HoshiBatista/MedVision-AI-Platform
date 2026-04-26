@@ -8,7 +8,10 @@ from sqlalchemy import text
 from app.api.v1 import router as api_v1_router
 from app.core.config import settings
 from app.core.database import AsyncSessionFactory, create_tables
+from app.core.logging_config import configure_logging
+from app.middleware.logging import RequestLoggingMiddleware
 
+configure_logging("auth_service")
 logger = structlog.get_logger()
 
 app = FastAPI(
@@ -18,6 +21,7 @@ app = FastAPI(
     redoc_url=None,
 )
 
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -34,7 +38,12 @@ app.include_router(api_v1_router, prefix="/api/v1")
 @app.on_event("startup")
 async def startup() -> None:
     await create_tables()
-    logger.info("auth_service started", environment=settings.environment)
+    logger.info(
+        "auth_service started",
+        environment=settings.environment,
+        log_level=settings.log_level,
+        session_ttl_seconds=settings.session_ttl_seconds,
+    )
 
 
 @app.get("/health", tags=["ops"])

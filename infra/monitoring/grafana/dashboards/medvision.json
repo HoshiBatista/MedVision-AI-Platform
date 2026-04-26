@@ -1,0 +1,210 @@
+{
+  "__inputs": [],
+  "__requires": [{ "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }],
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100, "title": "HTTP Traffic", "type": "row" },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 },
+      "id": 1,
+      "title": "Request Rate by Service",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(http_requests_total[1m])) by (job)", "legendFormat": "{{job}}", "refId": "A" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit",
+        "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.01 }, { "color": "red", "value": 0.05 }] } } },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 1 },
+      "id": 2,
+      "title": "Error Rate (5xx) by Service",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[1m])) by (job) / sum(rate(http_requests_total[1m])) by (job)", "legendFormat": "{{job}}", "refId": "A" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "ms" } },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "title": "Request Latency P50 / P95 / P99",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[1m])) by (le, job)) * 1000", "legendFormat": "P50 {{job}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le, job)) * 1000", "legendFormat": "P95 {{job}}", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[1m])) by (le, job)) * 1000", "legendFormat": "P99 {{job}}", "refId": "C" }
+      ]
+    },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "id": 101, "title": "Auth Service", "type": "row" },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "id": 10,
+      "title": "Login Rate by Result",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(auth_login_total[1m])) by (result)", "legendFormat": "{{result}}", "refId": "A" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 9 },
+      "id": 11,
+      "title": "Registration Rate by Result",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(auth_register_total[1m])) by (result)", "legendFormat": "{{result}}", "refId": "A" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "unit": "short" } },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 9 },
+      "id": 12,
+      "title": "Active Sessions",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "auth_active_sessions", "legendFormat": "sessions", "refId": "A" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 16 },
+      "id": 13,
+      "title": "Password Hash Duration (bcrypt)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, rate(auth_password_hash_duration_seconds_bucket[5m]))", "legendFormat": "P95", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, rate(auth_password_hash_duration_seconds_bucket[5m]))", "legendFormat": "P99", "refId": "B" }
+      ]
+    },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 102, "title": "Upload Service", "type": "row" },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 24 },
+      "id": 20,
+      "title": "Uploads by Modality & Result",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(upload_studies_total[1m])) by (modality, result)", "legendFormat": "{{modality}} / {{result}}", "refId": "A" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 24 },
+      "id": 21,
+      "title": "Upload File Size Distribution (P50 / P95)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(upload_file_size_bytes_bucket[5m])) by (le, modality))", "legendFormat": "P50 {{modality}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(upload_file_size_bytes_bucket[5m])) by (le, modality))", "legendFormat": "P95 {{modality}}", "refId": "B" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 24 },
+      "id": 22,
+      "title": "Upload Processing Duration (P95 / P99)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(upload_duration_seconds_bucket[5m])) by (le, modality))", "legendFormat": "P95 {{modality}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum(rate(upload_duration_seconds_bucket[5m])) by (le, modality))", "legendFormat": "P99 {{modality}}", "refId": "B" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 31 },
+      "id": 23,
+      "title": "DICOM Validation Results",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(upload_dicom_validation_total[1m])) by (result)", "legendFormat": "{{result}}", "refId": "A" }
+      ]
+    },
+
+    { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "id": 103, "title": "Infrastructure", "type": "row" },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "percentunit",
+        "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.7 }, { "color": "red", "value": 0.9 }] } } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 39 },
+      "id": 30,
+      "title": "PostgreSQL Active Connections",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "pg_stat_database_numbackends{datname=\"medvision\"}", "legendFormat": "connections", "refId": "A" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 39 },
+      "id": 31,
+      "title": "Redis Memory Usage",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "redis_memory_used_bytes", "legendFormat": "used", "refId": "A" },
+        { "expr": "redis_memory_max_bytes", "legendFormat": "max", "refId": "B" }
+      ]
+    },
+
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 39 },
+      "id": 32,
+      "title": "Redis Connected Clients",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "redis_connected_clients", "legendFormat": "clients", "refId": "A" }
+      ]
+    }
+
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["medvision", "medical-ai"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "MedVision AI Platform",
+  "uid": "medvision-main",
+  "version": 1
+}

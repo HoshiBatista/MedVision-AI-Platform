@@ -1,3 +1,4 @@
+import structlog
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -5,17 +6,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import get_current_user, get_db, get_redis
+from app.core.metrics import (
+    AUTH_LOGIN_TOTAL,
+    AUTH_LOGOUT_TOTAL,
+    AUTH_REGISTER_TOTAL,
+)
 from app.core.security import create_session, delete_session, hash_password, verify_password
 from app.models.user import User
 from app.schemas.user import LoginRequest, RegisterRequest, UserResponse
 
 router = APIRouter()
+logger = structlog.get_logger()
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> User:
+    logger.info("registration attempt", email=body.email)
+
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
+        AUTH_REGISTER_TOTAL.labels(result="email_exists").inc()
+        logger.warning("registration failed — email already exists", email=body.email)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     user = User(
@@ -26,6 +37,9 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    AUTH_REGISTER_TOTAL.labels(result="success").inc()
+    logger.info("user registered", user_id=user.id, email=user.email, role=user.role)
     return user
 
 
@@ -36,13 +50,19 @@ async def login(
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ) -> User:
+    logger.info("login attempt", email=body.email)
+
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
     if user is None or not verify_password(body.password, user.hashed_password):
+        AUTH_LOGIN_TOTAL.labels(result="invalid_credentials").inc()
+        logger.warning("login failed — invalid credentials", email=body.email)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     if not user.is_active:
+        AUTH_LOGIN_TOTAL.labels(result="account_disabled").inc()
+        logger.warning("login failed — account disabled", user_id=user.id, email=user.email)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
     session_id = await create_session(redis, user.id)
@@ -54,6 +74,15 @@ async def login(
         samesite="lax",
         secure=settings.environment == "production",
         max_age=settings.session_ttl_seconds,
+    )
+
+    AUTH_LOGIN_TOTAL.labels(result="success").inc()
+    logger.info(
+        "user logged in",
+        user_id=user.id,
+        email=user.email,
+        role=user.role,
+        session_ttl_seconds=settings.session_ttl_seconds,
     )
     return user
 
@@ -67,4 +96,8 @@ async def logout(
 ) -> None:
     if session_id:
         await delete_session(redis, session_id)
+
     response.delete_cookie(key=settings.session_cookie_name)
+
+    AUTH_LOGOUT_TOTAL.inc()
+    logger.info("user logged out", user_id=current_user.id, email=current_user.email)

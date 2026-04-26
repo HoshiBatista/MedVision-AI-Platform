@@ -1,0 +1,82 @@
+groups:
+  - name: medvision.services
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 2 minutes."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+          /
+          sum(rate(http_requests_total[5m])) by (job)
+          > 0.05
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} on {{ $labels.job }}."
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job))
+          > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P99 latency on {{ $labels.job }}"
+          description: "P99 latency is {{ $value | humanizeDuration }} on {{ $labels.job }}."
+
+  - name: medvision.auth
+    rules:
+      - alert: BruteForceAttempt
+        expr: |
+          sum(rate(auth_login_total{result="invalid_credentials"}[5m])) by (job) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Possible brute force on auth_service"
+          description: "More than 10 failed logins/min in the last 5 minutes."
+
+  - name: medvision.uploads
+    rules:
+      - alert: HighDicomValidationErrors
+        expr: |
+          sum(rate(upload_dicom_validation_total{result="error"}[5m]))
+          /
+          sum(rate(upload_dicom_validation_total[5m]))
+          > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High DICOM validation error rate"
+          description: "{{ $value | humanizePercentage }} of DICOM files are failing validation."
+
+  - name: medvision.infrastructure
+    rules:
+      - alert: PostgresHighConnections
+        expr: pg_stat_database_numbackends{datname="medvision"} > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connection count is high"
+          description: "{{ $value }} active connections to medvision database."
+
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage is above 85%"
+          description: "Redis is using {{ $value | humanizePercentage }} of max memory."
