@@ -1,8 +1,7 @@
-import time
-import uuid
+from datetime import datetime, timedelta, timezone
 
+from jose import JWTError, jwt
 from passlib.context import CryptContext
-from redis.asyncio import Redis
 
 from app.core.config import settings
 from app.core.metrics import AUTH_PASSWORD_HASH_DURATION
@@ -20,22 +19,11 @@ def verify_password(plain: str, hashed: str) -> bool:
         return pwd_context.verify(plain, hashed)
 
 
-async def create_session(redis: Redis, user_id: int) -> str:
-    session_id = str(uuid.uuid4())
-    await redis.setex(
-        f"session:{session_id}",
-        settings.session_ttl_seconds,
-        str(user_id),
-    )
-    return session_id
+def create_access_token(user_id: int, role: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    payload: dict = {"sub": str(user_id), "role": role, "exp": expire}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-async def get_user_id_from_session(redis: Redis, session_id: str) -> int | None:
-    value = await redis.get(f"session:{session_id}")
-    if value is None:
-        return None
-    return int(value)
-
-
-async def delete_session(redis: Redis, session_id: str) -> None:
-    await redis.delete(f"session:{session_id}")
+def decode_access_token(token: str) -> dict:
+    return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])

@@ -17,12 +17,31 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 
 class UpdateUserRequest(BaseModel):
     full_name: str | None = None
+
+
+class AdminUpdateUserRequest(BaseModel):
+    full_name: str | None = None
+    role: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("role")
+    @classmethod
+    def role_valid(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("admin", "user", "radiologist"):
+            raise ValueError("role must be one of: admin, user, radiologist")
+        return v
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
 
 
 class UserResponse(BaseModel):

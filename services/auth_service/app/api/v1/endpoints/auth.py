@@ -1,19 +1,15 @@
 import structlog
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from redis.asyncio import Redis
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_user, get_db, get_redis
-from app.core.metrics import (
-    AUTH_LOGIN_TOTAL,
-    AUTH_LOGOUT_TOTAL,
-    AUTH_REGISTER_TOTAL,
-)
-from app.core.security import create_session, delete_session, hash_password, verify_password
+from app.core.deps import get_current_user, get_db
+from app.core.metrics import AUTH_LOGIN_TOTAL, AUTH_LOGOUT_TOTAL, AUTH_REGISTER_TOTAL
+from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
-from app.schemas.user import LoginRequest, RegisterRequest, UserResponse
+from app.schemas.user import RegisterRequest, TokenResponse, UserResponse
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -43,61 +39,42 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
     return user
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post("/login", response_model=TokenResponse)
 async def login(
-    body: LoginRequest,
-    response: Response,
+    form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-) -> User:
-    logger.info("login attempt", email=body.email)
+) -> TokenResponse:
+    logger.info("login attempt", username=form.username)
 
-    result = await db.execute(select(User).where(User.email == body.email))
+    result = await db.execute(select(User).where(User.email == form.username))
     user = result.scalar_one_or_none()
 
-    if user is None or not verify_password(body.password, user.hashed_password):
+    if user is None or not verify_password(form.password, user.hashed_password):
         AUTH_LOGIN_TOTAL.labels(result="invalid_credentials").inc()
-        logger.warning("login failed — invalid credentials", email=body.email)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        logger.warning("login failed — invalid credentials", username=form.username)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     if not user.is_active:
         AUTH_LOGIN_TOTAL.labels(result="account_disabled").inc()
-        logger.warning("login failed — account disabled", user_id=user.id, email=user.email)
+        logger.warning("login failed — account disabled", user_id=user.id)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
-    session_id = await create_session(redis, user.id)
-
-    response.set_cookie(
-        key=settings.session_cookie_name,
-        value=session_id,
-        httponly=True,
-        samesite="lax",
-        secure=settings.environment == "production",
-        max_age=settings.session_ttl_seconds,
-    )
+    access_token = create_access_token(user.id, user.role)
 
     AUTH_LOGIN_TOTAL.labels(result="success").inc()
-    logger.info(
-        "user logged in",
-        user_id=user.id,
-        email=user.email,
-        role=user.role,
-        session_ttl_seconds=settings.session_ttl_seconds,
+    logger.info("user logged in", user_id=user.id, email=user.email, role=user.role)
+
+    return TokenResponse(
+        access_token=access_token,
+        expires_in=settings.access_token_expire_minutes * 60,
     )
-    return user
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(
-    response: Response,
-    session_id: str | None = Cookie(default=None, alias=settings.session_cookie_name),
-    current_user: User = Depends(get_current_user),
-    redis: Redis = Depends(get_redis),
-) -> None:
-    if session_id:
-        await delete_session(redis, session_id)
-
-    response.delete_cookie(key=settings.session_cookie_name)
-
+async def logout(current_user: User = Depends(get_current_user)) -> None:
     AUTH_LOGOUT_TOTAL.inc()
     logger.info("user logged out", user_id=current_user.id, email=current_user.email)

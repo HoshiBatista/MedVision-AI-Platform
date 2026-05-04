@@ -1,14 +1,16 @@
 from collections.abc import AsyncGenerator
 
-from fastapi import Cookie, Depends, HTTPException, status
-from redis.asyncio import Redis
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import AsyncSessionFactory
-from app.core.security import get_user_id_from_session
+from app.core.security import decode_access_token
 from app.models.user import User
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -16,29 +18,31 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def get_redis() -> AsyncGenerator[Redis, None]:
-    client = Redis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        yield client
-    finally:
-        await client.aclose()
-
-
 async def get_current_user(
-    medvision_session: str | None = Cookie(default=None, alias=settings.session_cookie_name),
+    token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
 ) -> User:
-    if not medvision_session:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = decode_access_token(token)
+        user_id: str | None = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
 
-    user_id = await get_user_id_from_session(redis, medvision_session)
-    if user_id is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or invalid")
-
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.id == int(user_id)))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
-
+        raise credentials_exception
     return user
+
+
+async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return current_user

@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import Counter, Histogram
 
 AUTH_LOGIN_TOTAL = Counter(
     "auth_login_total",
@@ -15,11 +15,6 @@ AUTH_REGISTER_TOTAL = Counter(
 AUTH_LOGOUT_TOTAL = Counter(
     "auth_logout_total",
     "Total logout calls",
-)
-
-AUTH_ACTIVE_SESSIONS = Gauge(
-    "auth_active_sessions",
-    "Approximate number of active sessions in Redis",
 )
 
 AUTH_PASSWORD_HASH_DURATION = Histogram(
