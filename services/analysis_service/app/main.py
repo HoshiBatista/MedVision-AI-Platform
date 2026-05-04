@@ -1,0 +1,83 @@
+import structlog
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
+from redis.asyncio import Redis
+from sqlalchemy import text
+
+from app.api.v1 import router as api_v1_router
+from app.core.config import settings
+from app.core.database import AsyncSessionFactory, create_tables
+from app.core.logging_config import configure_logging
+from app.middleware.logging import RequestLoggingMiddleware
+
+configure_logging("analysis_service")
+logger = structlog.get_logger()
+
+app = FastAPI(
+    title="MedVision Analysis Service",
+    version="1.0.0",
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url=None,
+)
+
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+app.include_router(api_v1_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    await create_tables()
+    logger.info(
+        "analysis_service started",
+        environment=settings.environment,
+        triton_url=settings.triton_http_url,
+        gradcam_url=settings.gradcam_service_url,
+    )
+
+
+@app.get("/health", tags=["ops"])
+async def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.get("/ready", tags=["ops"])
+async def ready() -> dict:
+    checks: dict[str, bool] = {}
+
+    try:
+        async with AsyncSessionFactory() as session:
+            await session.execute(text("SELECT 1"))
+        checks["db"] = True
+    except Exception:
+        checks["db"] = False
+
+    try:
+        redis = Redis.from_url(settings.redis_url)
+        await redis.ping()
+        await redis.aclose()
+        checks["redis"] = True
+    except Exception:
+        checks["redis"] = False
+
+    try:
+        import httpx
+        resp = httpx.get(
+            f"http://{settings.triton_http_url}/v2/health/ready", timeout=2.0
+        )
+        checks["triton"] = resp.status_code == 200
+    except Exception:
+        checks["triton"] = False
+
+    all_ok = all(checks.values())
+    return {"status": "ok" if all_ok else "degraded", "checks": checks}
