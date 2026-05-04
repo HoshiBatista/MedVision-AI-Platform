@@ -1,0 +1,4 @@
+MRI brain imaging report. {% if patient_context and patient_context.age %}Patient is a {{ patient_context.age }}-year-old {% if patient_context.sex %}{{ patient_context.sex }}{% endif %}.{% endif %} {% if patient_context and patient_context.clinical_indication %}Clinical indication: {{ patient_context.clinical_indication }}.{% endif %}
+Technique: Magnetic resonance imaging of the brain was performed using multisequence protocol including FLAIR, T1-weighted, T1 post-contrast, and T2-weighted sequences.
+Automated AI segmentation analysis confidence: {{ findings.confidence | default("N/A") }}. {% if findings.regions %}Segmented regions identified: {{ findings.regions | length }} areas of interest.{% endif %} {% if findings.max_area_mm2 %}Largest lesion area measured {{ findings.max_area_mm2 }} mm².{% endif %}
+Findings: Brain MRI demonstrates

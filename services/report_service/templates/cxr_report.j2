@@ -1,0 +1,4 @@
+Chest X-ray radiological report. {% if patient_context and patient_context.age %}Patient is a {{ patient_context.age }}-year-old {% if patient_context.sex %}{{ patient_context.sex }}{% endif %}.{% endif %} {% if patient_context and patient_context.clinical_indication %}Clinical indication: {{ patient_context.clinical_indication }}.{% endif %}
+Technique: PA and lateral chest radiograph was obtained.
+Automated AI detection analysis confidence: {{ findings.confidence | default("N/A") }}. {% if findings.bbox_count %}{{ findings.bbox_count }} region(s) of interest detected.{% endif %}
+Findings: Chest radiograph demonstrates

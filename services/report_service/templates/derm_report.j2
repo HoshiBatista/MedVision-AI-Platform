@@ -1,0 +1,4 @@
+Dermoscopic image analysis report. {% if patient_context and patient_context.age %}Patient is a {{ patient_context.age }}-year-old {% if patient_context.sex %}{{ patient_context.sex }}{% endif %}.{% endif %} {% if patient_context and patient_context.clinical_indication %}Clinical indication: {{ patient_context.clinical_indication }}.{% endif %}
+Technique: Dermoscopic imaging was performed for analysis of the skin lesion.
+Automated AI classification analysis confidence: {{ findings.confidence | default("N/A") }}. {% if findings.top_class %}Predicted lesion category: {{ findings.top_class }}.{% endif %} {% if findings.labels %}Differential diagnosis includes: {{ findings.labels | join(", ") }}.{% endif %}
+Findings: Dermoscopic examination demonstrates
