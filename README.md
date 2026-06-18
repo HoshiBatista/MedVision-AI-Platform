@@ -1,6 +1,13 @@
 # MedVision AI Platform
 
-Production-grade medical imaging analysis platform. Ingests DICOM / PNG / JPEG images, runs deep-learning inference on three clinical tasks, overlays explainability heatmaps, and generates AI-assisted radiology reports via the Anthropic API.
+[![Python Quality](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-quality.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-quality.yml)
+[![Python Tests](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-tests.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-tests.yml)
+[![Frontend](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/frontend.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/frontend.yml)
+[![Docker](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/docker.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/docker.yml)
+[![CodeQL](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/codeql.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/codeql.yml)
+[![Repo Hygiene](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/meta.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/meta.yml)
+
+Production-grade medical imaging analysis platform. Ingests DICOM / PNG / JPEG images, runs deep-learning inference on three clinical tasks, overlays explainability heatmaps, and generates AI-assisted radiology reports via a local BioGPT model.
 
 ---
 
@@ -61,22 +68,22 @@ open http://localhost:3000
 
 ```
 .
-├── ml/                    ← Training, evaluation, ONNX export
-│   ├── shared/            ← ClearML helpers, metrics, transforms
-│   ├── mri_segmentation/  ← YOLOv11-seg — brain tumor segmentation
-│   ├── pneumonia_detection/ ← YOLOv11-det — chest X-ray
-│   └── skin_classification/ ← YOLOv11-det — skin lesions (HAM10000)
+├── ml/                    Training, evaluation, ONNX export
+│   ├── shared/            ClearML helpers, metrics, transforms
+│   ├── mri_segmentation/  YOLOv11-seg — brain tumor segmentation
+│   ├── pneumonia_detection/ YOLOv11-det — chest X-ray
+│   └── skin_classification/ YOLOv11-det — skin lesions (HAM10000)
 ├── services/
-│   ├── gateway/           ← Nginx + JWT validation
-│   ├── upload_service/    ← DICOM ingestion → MinIO
-│   ├── analysis_service/  ← Job orchestration, Triton gRPC client
-│   ├── report_service/    ← LLM report generation (Anthropic)
-│   ├── auth_service/      ← JWT issuance, user management
-│   └── gradcam_service/   ← GradCAM / GradCAM++ explainability
-├── triton_models/         ← Triton model repository (config + ONNX)
-├── frontend/              ← React UI
-├── infra/                 ← Helm charts, Terraform, Prometheus/Grafana
-└── tests/                 ← Integration + E2E test suites
+│   ├── gateway/           Nginx + JWT validation
+│   ├── upload_service/    DICOM ingestion MinIO
+│   ├── analysis_service/  Job orchestration, Triton gRPC client
+│   ├── report_service/    LLM report generation (Anthropic)
+│   ├── auth_service/      JWT issuance, user management
+│   └── gradcam_service/   GradCAM / GradCAM++ explainability
+├── triton_models/         Triton model repository (config + ONNX)
+├── frontend/              React UI
+├── infra/                 Helm charts, Terraform, Prometheus/Grafana
+└── tests/                 Integration + E2E test suites
 ```
 
 ---
