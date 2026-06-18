@@ -1,11 +1,13 @@
 # MedVision AI Platform
 
-[![Python Quality](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-quality.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-quality.yml)
-[![Python Tests](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-tests.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/python-tests.yml)
-[![Frontend](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/frontend.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/frontend.yml)
-[![Docker](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/docker.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/docker.yml)
-[![CodeQL](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/codeql.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/codeql.yml)
-[![Repo Hygiene](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/meta.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/meta.yml)
+[![CI](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/badge/CodeQL-enabled-2088FF?logo=github&logoColor=white)](https://github.com/HoshiBatista/MedVision-AI-Platform/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 Production-grade medical imaging analysis platform. Ingests DICOM / PNG / JPEG images, runs deep-learning inference on three clinical tasks, overlays explainability heatmaps, and generates AI-assisted radiology reports via a local BioGPT model.
 
