@@ -1,0 +1,347 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # weekly (CodeQL refresh)
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────────── Python ──────────────────────────────────────
+  python-quality:
+    name: Ruff + mypy · ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { service: auth_service,     path: services/auth_service,     python: "3.13" }
+          - { service: upload_service,   path: services/upload_service,   python: "3.13" }
+          - { service: analysis_service, path: services/analysis_service, python: "3.12" }
+          - { service: gradcam_service,  path: services/gradcam_service,  python: "3.11" }
+          - { service: report_service,   path: services/report_service,   python: "3.11" }
+          - { service: ml,               path: ml,                        python: "3.11" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install tools
+        run: pipx install ruff==0.7.4 && pipx install mypy==1.13.0
+      - name: Ruff lint
+        id: lint
+        run: ruff check ${{ matrix.path }} --output-format=github
+      - name: Ruff format check
+        id: fmt
+        if: always()
+        continue-on-error: true
+        run: ruff format --check --diff ${{ matrix.path }}
+      - name: mypy (advisory)
+        id: mypy
+        if: always()
+        continue-on-error: true
+        run: |
+          target="${{ matrix.path }}"
+          [ -d "${target}/app" ] && target="${target}/app"
+          mypy "${target}" --ignore-missing-imports --config-file pyproject.toml
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Ruff + mypy — \`${{ matrix.service }}\` (py${{ matrix.python }})"
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| Ruff lint | ${{ steps.lint.outcome == 'success' && 'pass' || 'fail' }} |"
+            echo "| Ruff format | ${{ steps.fmt.outcome == 'success' && 'pass' || 'advisory' }} |"
+            echo "| mypy | ${{ steps.mypy.outcome == 'success' && 'pass' || 'advisory' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  python-security:
+    name: Bandit security scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pipx install bandit==1.7.10
+      - name: Run bandit
+        run: bandit -r services ml -ll -x "**/.venv/**,**/tests/**" | tee bandit.out
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Bandit (advisory)"
+            echo '```'
+            tail -n 25 bandit.out 2>/dev/null || echo "no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  python-tests:
+    name: pytest · ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [integration, e2e]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: medvision
+          POSTGRES_PASSWORD: medvision
+          POSTGRES_DB: medvision_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U medvision"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://medvision:medvision@localhost:5432/medvision_test
+      REDIS_URL: redis://localhost:6379/0
+      ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest pytest-asyncio pytest-cov httpx
+      - name: Run ${{ matrix.suite }} suite
+        run: |
+          set -o pipefail
+          pytest "tests/${{ matrix.suite }}" \
+            --cov=services --cov-report=term-missing --cov-report=xml \
+            --junitxml="junit-${{ matrix.suite }}.xml" | tee pytest.out || code=$?
+          code=${code:-0}
+          if [ "$code" -eq 5 ]; then
+            echo "NO_TESTS=1" >> "$GITHUB_ENV"
+            echo "::notice title=No tests::tests/${{ matrix.suite }} is a placeholder."
+            exit 0
+          fi
+          exit "$code"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### pytest — ${{ matrix.suite }}"
+            if [ "${NO_TESTS:-0}" = "1" ]; then
+              echo "> No tests collected yet (placeholder suite)."
+            else
+              echo '```'
+              tail -n 25 pytest.out 2>/dev/null || true
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage
+        if: env.NO_TESTS != '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.suite }}
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  # ──────────────────────────── Frontend ─────────────────────────────────────
+  frontend:
+    name: Frontend (typecheck · lint · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('frontend/package.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Type-check
+        id: tsc
+        run: npm run typecheck
+      - name: ESLint
+        id: eslint
+        if: always()
+        run: npm run lint
+      - name: Build
+        id: build
+        if: always()
+        run: npm run build
+      - name: Upload dist
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Frontend"
+            echo "| Stage | Result |"
+            echo "|---|---|"
+            echo "| Type-check | ${{ steps.tsc.outcome == 'success' && 'pass' || 'fail' }} |"
+            echo "| ESLint | ${{ steps.eslint.outcome == 'success' && 'pass' || 'fail' }} |"
+            echo "| Build | ${{ steps.build.outcome == 'success' && 'pass' || 'fail' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────── Docker ──────────────────────────────────────
+  hadolint:
+    name: Hadolint · ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: auth_service,     dockerfile: services/auth_service/Dockerfile }
+          - { image: upload_service,   dockerfile: services/upload_service/Dockerfile }
+          - { image: analysis_service, dockerfile: services/analysis_service/Dockerfile }
+          - { image: gradcam_service,  dockerfile: services/gradcam_service/Dockerfile }
+          - { image: report_service,   dockerfile: services/report_service/Dockerfile }
+          - { image: gateway,          dockerfile: services/gateway/Dockerfile }
+          - { image: frontend,         dockerfile: frontend/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.dockerfile }}
+          no-fail: true
+          failure-threshold: warning
+
+  docker-build:
+    name: Build image · ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    needs: hadolint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: auth_service,     context: services/auth_service }
+          - { image: upload_service,   context: services/upload_service }
+          - { image: analysis_service, context: services/analysis_service }
+          - { image: gradcam_service,  context: services/gradcam_service }
+          - { image: report_service,   context: services/report_service }
+          - { image: gateway,          context: services/gateway }
+          - { image: frontend,         context: frontend }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: false
+          load: true
+          tags: medvision/${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Image \`medvision/${{ matrix.image }}\`"
+            echo "- Context: \`${{ matrix.context }}\`"
+            echo "- Result: ${{ job.status == 'success' && 'built' || 'failed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  compose-validate:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose
+        run: |
+          cp .env.example .env 2>/dev/null || true
+          docker compose -f docker-compose.yml config > /dev/null
+          echo "docker-compose.yml is valid" >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────── Security / Hygiene ───────────────────────────────
+  codeql:
+    name: CodeQL · ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  repo-hygiene:
+    name: Repo hygiene (actionlint · yamllint · gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: actionlint
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
+      - name: yamllint
+        run: pipx run yamllint -d relaxed .github/ docker-compose.yml
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ───────────────────────────── Gate ────────────────────────────────────────
+  ci-success:
+    name: CI success
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - python-quality
+      - python-tests
+      - frontend
+      - hadolint
+      - docker-build
+      - compose-validate
+      - repo-hygiene
+    steps:
+      - name: Check required job results
+        run: |
+          results="${{ join(needs.*.result, ',') }}"
+          echo "Required job results: ${results}"
+          {
+            echo "### CI gate"
+            echo "Results: \`${results}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if echo "${results}" | grep -qE 'failure|cancelled'; then
+            echo "::error::One or more required jobs failed"
+            exit 1
+          fi
+          echo "All required checks passed" >> "$GITHUB_STEP_SUMMARY"
