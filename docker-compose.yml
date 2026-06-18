@@ -1,0 +1,340 @@
+# MedVision AI Platform — full development stack
+# Usage: make up | docker compose up -d
+#
+# Profiles:
+#   (default)  — all services except Triton
+#   triton     — add --profile triton to enable Triton Inference Server
+#   monitoring — Prometheus + Grafana (add --profile monitoring)
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-service-defaults: &service-defaults
+  <<: *restart
+  logging: *default-logging
+  networks:
+    - backend
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Infrastructure
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  postgres:
+    <<: *service-defaults
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-medvision}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-medvision}
+      POSTGRES_DB:       ${POSTGRES_DB:-medvision}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medvision}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    <<: *service-defaults
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ML Serving (optional — enable with: docker compose --profile triton up)
+# ─────────────────────────────────────────────────────────────────────────────
+  triton:
+    <<: *service-defaults
+    profiles: [triton]
+    image: nvcr.io/nvidia/tritonserver:24.09-py3-min
+    command: >
+      tritonserver
+      --model-repository=/models
+      --http-port=8000
+      --grpc-port=8001
+      --metrics-port=8002
+      --log-verbose=0
+    volumes:
+      - ./triton_models:/models:ro
+    ports:
+      - "8010:8000"   # HTTP  (offset to avoid conflict with app services)
+      - "8011:8001"   # gRPC
+      - "8012:8002"   # metrics
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/v2/health/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Application Services
+# ─────────────────────────────────────────────────────────────────────────────
+  auth_service:
+    <<: *service-defaults
+    build:
+      context: services/auth_service
+      dockerfile: Dockerfile
+    image: medvision/auth_service:dev
+    env_file: .env
+    environment:
+      DATABASE_URL:               postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      JWT_SECRET_KEY:             ${JWT_SECRET_KEY:-dev-secret-change-in-prod}
+      JWT_ALGORITHM:              ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      ADMIN_USERNAME:             ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD:             ${ADMIN_PASSWORD:-admin}
+      ENVIRONMENT:                ${ENVIRONMENT:-development}
+      LOG_LEVEL:                  ${LOG_LEVEL:-INFO}
+      DOCS_ENABLED:               "true"
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  upload_service:
+    <<: *service-defaults
+    build:
+      context: services/upload_service
+      dockerfile: Dockerfile
+    image: medvision/upload_service:dev
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      STORAGE_ROOT: /data/studies
+      ENVIRONMENT:  ${ENVIRONMENT:-development}
+      LOG_LEVEL:    ${LOG_LEVEL:-INFO}
+    ports:
+      - "8002:8002"
+    volumes:
+      - study_data:/data/studies
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  analysis_service:
+    <<: *service-defaults
+    build:
+      context: services/analysis_service
+      dockerfile: Dockerfile
+    image: medvision/analysis_service:dev
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    env_file: .env
+    environment:
+      DATABASE_URL:         postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      SYNC_DATABASE_URL:    postgresql+psycopg2://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      REDIS_URL:            redis://redis:6379/0
+      CELERY_BROKER_URL:    redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      TRITON_HTTP_URL:      triton:8000
+      GRADCAM_SERVICE_URL:  http://gradcam_service:8004
+      STORAGE_ROOT:         /data/studies
+      ENVIRONMENT:          ${ENVIRONMENT:-development}
+      LOG_LEVEL:            ${LOG_LEVEL:-INFO}
+    ports:
+      - "8003:8003"
+    volumes:
+      - study_data:/data/studies
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  analysis_worker:
+    <<: *service-defaults
+    build:
+      context: services/analysis_service
+      dockerfile: Dockerfile
+    image: medvision/analysis_service:dev
+    command: >
+      celery -A app.workers.celery_app.celery worker
+      -Q analysis -c 2 -l info
+      --without-gossip --without-mingle
+    env_file: .env
+    environment:
+      DATABASE_URL:          postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      SYNC_DATABASE_URL:     postgresql+psycopg2://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      REDIS_URL:             redis://redis:6379/0
+      CELERY_BROKER_URL:     redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      TRITON_HTTP_URL:       triton:8000
+      GRADCAM_SERVICE_URL:   http://gradcam_service:8004
+      STORAGE_ROOT:          /data/studies
+      ENVIRONMENT:           ${ENVIRONMENT:-development}
+      LOG_LEVEL:             ${LOG_LEVEL:-INFO}
+    volumes:
+      - study_data:/data/studies
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  gradcam_service:
+    <<: *service-defaults
+    build:
+      context: services/gradcam_service
+      dockerfile: Dockerfile
+    image: medvision/gradcam_service:dev
+    env_file: .env
+    environment:
+      MODEL_REPO_ROOT:    /models
+      HEATMAP_OUTPUT_DIR: /data/heatmaps
+      HEATMAP_ALPHA:      "0.5"
+      ENVIRONMENT:        ${ENVIRONMENT:-development}
+      LOG_LEVEL:          ${LOG_LEVEL:-INFO}
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./triton_models:/models:ro
+      - heatmap_data:/data/heatmaps
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  report_service:
+    <<: *service-defaults
+    build:
+      context: services/report_service
+      dockerfile: Dockerfile
+    image: medvision/report_service:dev
+    env_file: .env
+    environment:
+      DATABASE_URL:       postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      LLM_MODEL_NAME:     ${LLM_MODEL_NAME:-microsoft/biogpt}
+      LLM_MAX_NEW_TOKENS: "512"
+      LLM_DEVICE:         auto
+      ENVIRONMENT:        ${ENVIRONMENT:-development}
+      LOG_LEVEL:          ${LOG_LEVEL:-INFO}
+    ports:
+      - "8005:8005"
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8005/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 60s   # BioGPT needs time to load on first start
+
+  frontend:
+    <<: *service-defaults
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    image: medvision/frontend:dev
+    ports:
+      - "3000:3000"
+
+  gateway:
+    <<: *service-defaults
+    build:
+      context: services/gateway
+      dockerfile: Dockerfile
+    image: medvision/gateway:dev
+    ports:
+      - "80:80"
+    volumes:
+      - study_data:/data/studies:ro
+      - heatmap_data:/data/heatmaps:ro
+    depends_on:
+      - frontend
+      - auth_service
+      - upload_service
+      - analysis_service
+      - gradcam_service
+      - report_service
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Observability (enable with: docker compose --profile monitoring up)
+# ─────────────────────────────────────────────────────────────────────────────
+  prometheus:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED:  "false"
+    volumes:
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Networks & Volumes
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  study_data:
+  heatmap_data:
+  hf_cache:
+  prometheus_data:
+  grafana_data:

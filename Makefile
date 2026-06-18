@@ -1,0 +1,79 @@
+.PHONY: help up down build logs ps shell restart \
+        up-monitoring up-triton up-all \
+        lint test-integration clean
+
+DC      := docker compose
+SERVICE ?= auth_service
+
+help:
+	@echo "MedVision AI — dev commands"
+	@echo ""
+	@echo "  make up              Start core stack (postgres, redis, all services, gateway)"
+	@echo "  make up-monitoring   Core + Prometheus + Grafana"
+	@echo "  make up-triton       Core + Triton Inference Server"
+	@echo "  make up-all          Everything"
+	@echo "  make down            Stop and remove containers"
+	@echo "  make build           Rebuild all images"
+	@echo "  make logs            Tail logs (SERVICE=<name> for one service)"
+	@echo "  make ps              Show running containers"
+	@echo "  make shell           Open a shell in SERVICE container"
+	@echo "  make restart         Restart SERVICE"
+	@echo "  make lint            Run ruff + mypy on all services"
+	@echo "  make test-integration Run integration tests"
+	@echo "  make clean           Remove volumes (DATA LOSS)"
+
+# ── Ensure .env exists ────────────────────────────────────────────────────────
+.env:
+	@echo ".env not found — copying from .env.example"
+	cp .env.example .env
+	@echo "Edit .env and set secrets, then re-run make up"
+	@exit 1
+
+# ── Stack management ──────────────────────────────────────────────────────────
+up: .env
+	$(DC) up -d --remove-orphans
+
+up-monitoring: .env
+	$(DC) --profile monitoring up -d --remove-orphans
+
+up-triton: .env
+	$(DC) --profile triton up -d --remove-orphans
+
+up-all: .env
+	$(DC) --profile triton --profile monitoring up -d --remove-orphans
+
+down:
+	$(DC) down
+
+build:
+	$(DC) build --parallel
+
+# ── Operational ───────────────────────────────────────────────────────────────
+logs:
+	$(DC) logs -f $(SERVICE)
+
+ps:
+	$(DC) ps
+
+shell:
+	$(DC) exec $(SERVICE) /bin/sh
+
+restart:
+	$(DC) restart $(SERVICE)
+
+# ── Quality ───────────────────────────────────────────────────────────────────
+lint:
+	@for svc in auth_service upload_service analysis_service gradcam_service report_service; do \
+	  echo "── $$svc ──"; \
+	  $(DC) run --rm --no-deps $$svc sh -c "pip install ruff mypy -q && ruff check app/ && mypy app/ --ignore-missing-imports" || true; \
+	done
+
+test-integration:
+	$(DC) run --rm --no-deps -e ENVIRONMENT=test auth_service \
+	  sh -c "pip install pytest httpx -q && pytest /app/tests/integration/ -v"
+
+# ── Cleanup ───────────────────────────────────────────────────────────────────
+clean:
+	@echo "WARNING: This will delete all volumes (postgres data, heatmaps, model cache)."
+	@read -p "Continue? [y/N] " ans && [ "$$ans" = "y" ]
+	$(DC) down -v
