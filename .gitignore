@@ -25,6 +25,10 @@ var/
 wheels/
 share/python-wheels/
 *.egg-info/
+
+# Frontend source dir clashes with the Python `lib/` rule above — keep it tracked
+!frontend/src/lib/
+!frontend/src/lib/**
 .installed.cfg
 *.egg
 MANIFEST
