@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class FindingsInput(BaseModel):
@@ -29,7 +29,8 @@ class GenerateReportRequest(BaseModel):
 
 
 class ReportResponse(BaseModel):
-    report_id: str
+    # the ORM column is `id`; expose it as `report_id`
+    report_id: str = Field(validation_alias="id")
     study_id: str
     status: str
     modality: str
@@ -37,4 +38,4 @@ class ReportResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
