@@ -1,0 +1,38 @@
+# Shared tooling config for all MedVision Python services + ml/.
+# Used by CI (ruff, mypy) and local pre-commit hooks.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["services", "ml"]
+extend-exclude = [".venv", "**/__pycache__", "ml/data", "**/*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+ignore = [
+  "E501", # line length is handled by the formatter
+  "B008", # FastAPI uses Depends() in defaults by design
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+exclude = ['(^|/)\.venv/', '^ml/data/']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -v"
+asyncio_mode = "auto"
