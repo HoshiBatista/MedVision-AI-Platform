@@ -90,71 +90,47 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   python-tests:
-    name: pytest · ${{ matrix.suite }}
+    name: Tests · ${{ matrix.service }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        suite: [integration, e2e]
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: medvision
-          POSTGRES_PASSWORD: medvision
-          POSTGRES_DB: medvision_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U medvision"
-          --health-interval 10s --health-timeout 5s --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s --health-timeout 5s --health-retries 5
+        include:
+          - { service: auth_service, python: "3.13" }
     env:
-      DATABASE_URL: postgresql+asyncpg://medvision:medvision@localhost:5432/medvision_test
-      REDIS_URL: redis://localhost:6379/0
       ENVIRONMENT: test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - run: pip install pytest pytest-asyncio pytest-cov httpx
-      - name: Run ${{ matrix.suite }} suite
+          python-version: ${{ matrix.python }}
+      - name: Install service + test deps
+        run: |
+          pip install -r services/${{ matrix.service }}/requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx aiosqlite
+      - name: Run ${{ matrix.service }} tests
+        working-directory: services/${{ matrix.service }}
         run: |
           set -o pipefail
-          pytest "tests/${{ matrix.suite }}" \
-            --cov=services --cov-report=term-missing --cov-report=xml \
-            --junitxml="junit-${{ matrix.suite }}.xml" | tee pytest.out || code=$?
-          code=${code:-0}
-          if [ "$code" -eq 5 ]; then
-            echo "NO_TESTS=1" >> "$GITHUB_ENV"
-            echo "::notice title=No tests::tests/${{ matrix.suite }} is a placeholder."
-            exit 0
-          fi
-          exit "$code"
+          python -m pytest tests \
+            --cov=app --cov-report=term-missing --cov-report=xml \
+            --junitxml=junit.xml | tee pytest.out
       - name: Summary
         if: always()
+        working-directory: services/${{ matrix.service }}
         run: |
           {
-            echo "### pytest — ${{ matrix.suite }}"
-            if [ "${NO_TESTS:-0}" = "1" ]; then
-              echo "> No tests collected yet (placeholder suite)."
-            else
-              echo '```'
-              tail -n 25 pytest.out 2>/dev/null || true
-              echo '```'
-            fi
+            echo "### Tests — \`${{ matrix.service }}\`"
+            echo '```'
+            tail -n 20 pytest.out 2>/dev/null || echo "no output"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage
-        if: env.NO_TESTS != '1'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ matrix.suite }}
-          path: coverage.xml
+          name: coverage-${{ matrix.service }}
+          path: services/${{ matrix.service }}/coverage.xml
           if-no-files-found: ignore
 
   # ──────────────────────────── Frontend ─────────────────────────────────────
