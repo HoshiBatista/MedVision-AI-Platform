@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 512
 
     environment: str = "development"
+    log_level: str = "INFO"
     docs_enabled: bool = True
 
 
