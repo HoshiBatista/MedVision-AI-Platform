@@ -16,7 +16,6 @@ References: EigenCAM (Muhammad & Bhatt, 2021), arXiv:2008.00299
 
 from __future__ import annotations
 
-import io
 import threading
 from dataclasses import dataclass
 from pathlib import Path

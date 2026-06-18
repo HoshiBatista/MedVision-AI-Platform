@@ -21,7 +21,7 @@ from app.core.database import SyncSessionFactory
 from app.core.metrics import ANALYSIS_DURATION_SECONDS, ANALYSIS_JOBS_TOTAL
 from app.models.job import AnalysisJob
 from app.services.gradcam_service import request_heatmap
-from app.services.triton_client import TritonClient, _TASK_TO_MODEL
+from app.services.triton_client import _TASK_TO_MODEL, TritonClient
 from app.workers.celery_app import celery
 
 logger = structlog.get_logger()

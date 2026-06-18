@@ -99,7 +99,7 @@ def main() -> None:
     fig.suptitle("Skin Lesion Detection — Debug\n(left: GT  |  right: Prediction)", fontsize=14)
     axes = axes.flatten()
 
-    for i, (img_path, result) in enumerate(zip(imgs, results)):
+    for i, (img_path, result) in enumerate(zip(imgs, results, strict=False)):
         img  = cv2.cvtColor(cv2.imread(str(img_path)), cv2.COLOR_BGR2RGB)
         h, w = img.shape[:2]
         lbl  = TEST_LABELS / (Path(img_path).stem + ".txt")

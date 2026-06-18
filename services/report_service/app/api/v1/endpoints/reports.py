@@ -1,13 +1,12 @@
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.deps import get_db
 from app.core.prompt_builder import build_prompt
 from app.models.report import Report
 from app.schemas.report import GenerateReportRequest, ReportResponse
 from app.services.report_generator import report_generator
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 logger = structlog.get_logger()

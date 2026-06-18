@@ -3,7 +3,6 @@ ClearML helpers shared across all training scripts.
 Reads credentials from environment / ~/.clearml.conf.
 """
 
-import os
 from pathlib import Path
 from typing import Any
 

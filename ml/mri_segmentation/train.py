@@ -18,8 +18,9 @@ import yaml
 ROOT = Path(__file__).parent.parent.parent   # project root
 sys.path.insert(0, str(ROOT / "ml"))
 
-from shared.clearml_utils import init_task
 from ultralytics import YOLO
+
+from shared.clearml_utils import init_task
 
 DATA_YAML = ROOT / "ml" / "data" / "mri_segmentation" / "data.yaml"
 CONFIG     = Path(__file__).parent / "config.yaml"

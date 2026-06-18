@@ -11,11 +11,11 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from statistics import mean, median, stdev
+
 import numpy as np
 import onnxruntime as ort
-from statistics import mean, median, stdev
 from ultralytics import YOLO
-
 
 ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT / "ml"))

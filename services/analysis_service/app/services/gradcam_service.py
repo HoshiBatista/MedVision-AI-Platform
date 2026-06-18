@@ -4,8 +4,8 @@ Called from Celery tasks; uses synchronous httpx.
 Failures are non-fatal — analysis results are stored without a heatmap.
 """
 
-import structlog
 import httpx
+import structlog
 
 from app.core.config import settings
 

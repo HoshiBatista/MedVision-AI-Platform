@@ -59,7 +59,7 @@ def draw_prediction(img: np.ndarray, result, conf_thr: float) -> np.ndarray:
     out = img.copy()
     if result.masks is None:
         return out
-    for mask, box in zip(result.masks.xy, result.boxes):
+    for mask, box in zip(result.masks.xy, result.boxes, strict=False):
         conf = float(box.conf)
         cls  = int(box.cls)
         if conf < conf_thr:
@@ -111,7 +111,7 @@ def main() -> None:
     fig.suptitle("MRI Brain Tumor Segmentation — Debug\n(left: GT  |  right: Prediction)", fontsize=14)
     axes = axes.flatten()
 
-    for i, (img_path, result) in enumerate(zip(imgs, results)):
+    for i, (img_path, result) in enumerate(zip(imgs, results, strict=False)):
         img  = cv2.cvtColor(cv2.imread(str(img_path)), cv2.COLOR_BGR2RGB)
         lbl  = TEST_LABELS / (Path(img_path).stem + ".txt")
 

@@ -57,7 +57,7 @@ def main() -> None:
     print("─────────────────────────────────────────────────────────")
 
     print("\nPer-class (mAP50):")
-    for name, ap in zip(CLASSES, metrics.box.maps):
+    for name, ap in zip(CLASSES, metrics.box.maps, strict=False):
         print(f"  {name:<8}: {ap:.4f}")
 
     if args.save_json:

@@ -1,11 +1,10 @@
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.deps import get_current_user_id, get_db
 from app.models.job import AnalysisJob
 from app.schemas.job import JobResultResponse
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger()
 

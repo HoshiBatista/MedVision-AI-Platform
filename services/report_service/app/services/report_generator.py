@@ -5,9 +5,8 @@ from functools import partial
 
 import structlog
 import torch
-from transformers import BioGptForCausalLM, BioGptTokenizer, pipeline
-
 from app.core.config import settings
+from transformers import BioGptForCausalLM, BioGptTokenizer, pipeline
 
 logger = structlog.get_logger()
 

@@ -16,14 +16,15 @@ from pathlib import Path
 
 # ── SSL fix for Python 3.13 on macOS (must be before any network import) ─────
 import certifi
+
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
 
 from dotenv import load_dotenv
-from roboflow import Roboflow
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from roboflow import Roboflow
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent          # project root

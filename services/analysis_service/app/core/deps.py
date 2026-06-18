@@ -1,11 +1,10 @@
 from collections.abc import AsyncGenerator
 
+from app.core.config import settings
+from app.core.database import AsyncSessionFactory
 from fastapi import Cookie, Depends, HTTPException, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.config import settings
-from app.core.database import AsyncSessionFactory
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

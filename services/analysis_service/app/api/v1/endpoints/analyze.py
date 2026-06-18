@@ -1,14 +1,13 @@
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.deps import get_current_user_id, get_db
 from app.core.metrics import ANALYSIS_JOBS_TOTAL
-from app.models.job import AnalysisJob, VALID_TASKS
+from app.models.job import VALID_TASKS, AnalysisJob
 from app.schemas.job import AnalyzeRequest, JobQueuedResponse
 from app.workers.tasks import run_analysis
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger()
 

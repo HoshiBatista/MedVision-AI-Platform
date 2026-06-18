@@ -1,11 +1,10 @@
 import uuid
 from datetime import datetime
 
+from app.core.database import Base
 from sqlalchemy import DateTime, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
-
-from app.core.database import Base
 
 VALID_STATUSES = {"pending", "generating", "completed", "failed"}
 VALID_MODALITIES = {"MRI", "CXR", "DERM"}

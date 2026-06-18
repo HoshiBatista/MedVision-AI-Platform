@@ -16,6 +16,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+# ML training/eval/debug scripts: imports after sys.path/ClearML setup (E402),
+# terse multi-statement lines in debug helpers (E702), throwaway loop vars (B007).
+"ml/**" = ["E402", "E702", "B007"]
 
 [tool.ruff.format]
 quote-style = "double"

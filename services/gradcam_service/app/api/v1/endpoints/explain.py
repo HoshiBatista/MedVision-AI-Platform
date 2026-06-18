@@ -40,13 +40,13 @@ async def explain(body: ExplainRequest) -> ExplainResponse:
         )
     except FileNotFoundError as exc:
         logger.warning("model file not found", error=str(exc))
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("EigenCAM failed", model=body.model_name, error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"CAM computation failed: {exc}",
-        )
+        ) from exc
 
     try:
         heatmap_path = render_and_save(
@@ -60,7 +60,7 @@ async def explain(body: ExplainRequest) -> ExplainResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Heatmap rendering failed: {exc}",
-        )
+        ) from exc
 
     logger.info(
         "explain complete",

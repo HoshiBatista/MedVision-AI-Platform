@@ -58,7 +58,7 @@ def main() -> None:
 
     print("\nPer-class (seg mAP50):")
     names = ["GLIOMA", "MENINGIOMA", "NOTUMOR", "PITUITARY"]
-    for i, (name, ap) in enumerate(zip(names, metrics.seg.maps)):
+    for i, (name, ap) in enumerate(zip(names, metrics.seg.maps, strict=False)):
         print(f"  {name:<14}: {ap:.4f}")
 
     if args.save_json:

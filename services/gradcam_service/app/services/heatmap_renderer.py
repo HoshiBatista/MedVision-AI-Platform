@@ -19,9 +19,6 @@ from app.core.config import settings
 
 logger = structlog.get_logger()
 
-# Jet colormap LUT: 256 RGB triplets (uint8)
-_JET_LUT: np.ndarray = _build_jet_lut()  # type: ignore[assignment]
-
 
 def _build_jet_lut() -> np.ndarray:
     lut = np.zeros((256, 3), dtype=np.uint8)
@@ -34,7 +31,8 @@ def _build_jet_lut() -> np.ndarray:
     return lut
 
 
-_JET_LUT = _build_jet_lut()
+# Jet colormap LUT: 256 RGB triplets (uint8)
+_JET_LUT: np.ndarray = _build_jet_lut()
 
 
 def _load_original(image_path: str, target_size: tuple[int, int]) -> Image.Image:
