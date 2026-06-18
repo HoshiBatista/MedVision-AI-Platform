@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.job import VALID_TASKS
 
@@ -26,7 +26,8 @@ class JobQueuedResponse(BaseModel):
 
 
 class JobResultResponse(BaseModel):
-    job_id: str
+    # the ORM column is `id`; expose it as `job_id`
+    job_id: str = Field(validation_alias="id")
     study_id: str
     task: str
     status: str
@@ -35,4 +36,4 @@ class JobResultResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
