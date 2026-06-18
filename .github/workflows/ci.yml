@@ -99,6 +99,7 @@ jobs:
           - { service: auth_service, python: "3.13" }
           - { service: upload_service, python: "3.13" }
           - { service: analysis_service, python: "3.12" }
+          - { service: gradcam_service, python: "3.11" }
     env:
       ENVIRONMENT: test
     steps:
