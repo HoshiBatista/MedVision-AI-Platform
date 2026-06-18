@@ -25,28 +25,28 @@ export function usePolling<T>(
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    let timer: number | undefined;
 
-    const run = async () => {
+    // Returns true when polling should stop.
+    const tick = async (): Promise<boolean> => {
       try {
         const result = await fnRef.current();
-        if (cancelled) return;
-        if (stopRef.current(result)) {
-          if (timer) window.clearInterval(timer);
-          return;
-        }
+        if (cancelled) return true;
+        return stopRef.current(result);
       } catch (e) {
         // keep polling on transient errors
         console.warn("poll error", e);
+        return false;
       }
     };
 
-    void run();
-    timer = window.setInterval(run, intervalMs);
+    void tick();
+    const timer = window.setInterval(async () => {
+      if (await tick()) window.clearInterval(timer);
+    }, intervalMs);
 
     return () => {
       cancelled = true;
-      if (timer) window.clearInterval(timer);
+      window.clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, intervalMs, ...deps]);
