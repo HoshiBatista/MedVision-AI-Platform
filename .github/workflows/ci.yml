@@ -100,6 +100,7 @@ jobs:
           - { service: upload_service, python: "3.13" }
           - { service: analysis_service, python: "3.12" }
           - { service: gradcam_service, python: "3.11" }
+          - { service: report_service, python: "3.11" }
     env:
       ENVIRONMENT: test
     steps:
@@ -109,7 +110,11 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install service + test deps
         run: |
-          pip install -r services/${{ matrix.service }}/requirements.txt
+          # torch/transformers/accelerate are stubbed in report_service tests —
+          # skip the heavy ML wheels (no-op for the other services).
+          grep -ivE '^(torch|transformers|accelerate)' \
+            services/${{ matrix.service }}/requirements.txt > /tmp/req.txt
+          pip install -r /tmp/req.txt
           pip install pytest pytest-asyncio pytest-cov httpx aiosqlite
       - name: Run ${{ matrix.service }} tests
         working-directory: services/${{ matrix.service }}
