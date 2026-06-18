@@ -97,6 +97,7 @@ jobs:
       matrix:
         include:
           - { service: auth_service, python: "3.13" }
+          - { service: upload_service, python: "3.13" }
     env:
       ENVIRONMENT: test
     steps:
