@@ -29,7 +29,7 @@ MODALITIES = {"MRI", "CXR", "DERM"}
 router = APIRouter()
 
 
-@router.post("/", response_model=StudyResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=StudyResponse, status_code=status.HTTP_201_CREATED)
 async def upload_study(
     file: UploadFile,
     modality: Annotated[str, Query(description="MRI | CXR | DERM")],
@@ -154,7 +154,7 @@ async def upload_study(
     return study
 
 
-@router.get("/", response_model=StudyListResponse)
+@router.get("", response_model=StudyListResponse)
 async def list_studies(
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),

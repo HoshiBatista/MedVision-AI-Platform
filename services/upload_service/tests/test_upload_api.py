@@ -1,8 +1,8 @@
-"""API tests for the upload/studies endpoints."""
+"""API tests for the upload endpoints."""
 
 from app.core.config import settings
 
-BASE = "/api/v1/studies/"
+BASE = "/api/v1/upload"
 
 
 def test_upload_png_success(client, png_bytes):
@@ -76,13 +76,13 @@ def test_list_and_get_study(client, png_bytes):
     assert body["total"] >= 1
     assert any(s["id"] == study_id for s in body["items"])
 
-    fetched = client.get(f"{BASE}{study_id}")
+    fetched = client.get(f"{BASE}/{study_id}")
     assert fetched.status_code == 200
     assert fetched.json()["id"] == study_id
 
 
 def test_get_unknown_study_404(client):
-    assert client.get(f"{BASE}00000000-0000-0000-0000-000000000000").status_code == 404
+    assert client.get(f"{BASE}/00000000-0000-0000-0000-000000000000").status_code == 404
 
 
 def test_upload_requires_authentication(anon_client, png_bytes):
