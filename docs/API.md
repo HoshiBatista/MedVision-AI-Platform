@@ -2,13 +2,12 @@
 
 All services sit behind the Nginx gateway. In development the base URL is `http://localhost`.
 
-Every endpoint (except `/health`, `/ready`) requires:
+Most endpoints (except `/health`, `/ready`, `/metrics`) require:
 ```
 Authorization: Bearer <access_token>
-Content-Type: application/json
 ```
 
-On error every service returns:
+On error services return:
 ```json
 { "detail": "human-readable message", "error_code": "SNAKE_CASE_CODE" }
 ```
@@ -22,92 +21,72 @@ Register a new user.
 
 **Request**
 ```json
-{ "email": "user@hospital.org", "password": "s3cret" }
+{ "email": "user@hospital.org", "password": "s3cret", "full_name": "Dr Who" }
 ```
 
 **Response** `201`
 ```json
-{ "id": "uuid", "email": "user@hospital.org" }
+{ "id": 1, "email": "user@hospital.org", "full_name": "Dr Who", "role": "user", "is_active": true }
 ```
 
 ---
 
 ### POST /api/v1/auth/login
-Obtain access + refresh tokens.
+Obtain an access token (form-encoded, OAuth2 password flow).
 
-**Request** (form data)
+**Request** — `application/x-www-form-urlencoded`
 ```
 username=user@hospital.org&password=s3cret
 ```
 
 **Response** `200`
 ```json
-{
-  "access_token": "eyJ...",
-  "refresh_token": "eyJ...",
-  "token_type": "bearer"
-}
+{ "access_token": "eyJ...", "token_type": "bearer", "expires_in": 1800 }
 ```
 
----
+> Refresh tokens are not implemented yet — clients re-login when the access token expires.
 
-### POST /api/v1/auth/refresh
-Exchange a refresh token for a new access token.
-
-**Request**
-```json
-{ "refresh_token": "eyJ..." }
-```
-
-**Response** `200`
-```json
-{ "access_token": "eyJ...", "token_type": "bearer" }
-```
+### POST /api/v1/auth/logout
+Stateless acknowledgement (`204`). Also: `GET /api/v1/users/me`, `PATCH /api/v1/users/me`, and admin routes under `/api/v1/admin/users`.
 
 ---
 
 ## Upload Service
 
 ### POST /api/v1/upload
-Upload a medical image and queue it for ingestion.
+Upload a medical image. The modality is passed as a query parameter.
 
-**Request** — `multipart/form-data`
+**Request** — `multipart/form-data`, `?modality=MRI|CXR|DERM`
 ```
-file:     <DICOM | PNG | JPEG binary>
-modality: "MRI" | "CXR" | "DERM"
+file: <DICOM | PNG | JPEG binary>
 ```
 
-**Response** `202`
+**Response** `201`
 ```json
 {
-  "study_id": "uuid",
-  "status": "queued",
-  "storage_path": "s3://medvision/studies/{study_id}/original.dcm"
+  "id": "uuid",
+  "user_id": 1,
+  "modality": "DERM",
+  "original_filename": "lesion.png",
+  "file_path": "/data/studies/{id}/lesion.png",
+  "file_size_bytes": 12345,
+  "status": "uploaded",
+  "created_at": "2026-06-27T12:00:00Z"
 }
 ```
 
-**Error codes**
-| Code | Meaning |
-|---|---|
-| `INVALID_DICOM` | File fails DICOM validation |
-| `UNSUPPORTED_FORMAT` | File type not accepted |
-| `FILE_TOO_LARGE` | Exceeds `MAX_UPLOAD_SIZE_MB` (default 512 MB) |
-| `MINIO_UNAVAILABLE` | Storage backend unreachable |
+**Error codes**: `422` (unsupported type / invalid modality / invalid DICOM), `413` (exceeds `MAX_UPLOAD_SIZE_MB`).
 
 ---
 
 ## Analysis Service
 
-### POST /api/v1/analyze
-Submit an analysis job.
+### POST /api/v1/analyze/
+Submit an analysis job (note the trailing slash).
 
 **Request**
 ```json
-{
-  "study_id": "uuid",
-  "task": "segmentation" | "detection" | "classification",
-  "config": {}
-}
+{ "study_id": "uuid", "task": "segmentation" | "detection" | "classification", "config": {} }
 ```
 
 **Response** `202`
@@ -124,33 +103,36 @@ Poll the result of an analysis job.
 ```json
 {
   "job_id": "uuid",
+  "study_id": "uuid",
+  "task": "classification",
   "status": "queued" | "running" | "completed" | "failed",
-  "task": "segmentation",
   "results": {
-    "mask_url": "https://…/results/{job_id}/mask.png?X-Amz-Expires=3600",
-    "gradcam_url": "https://…/results/{job_id}/gradcam.png?X-Amz-Expires=3600",
-    "confidence": 0.94,
-    "findings": [
-      { "label": "GLIOMA", "bbox": [x1, y1, x2, y2], "area_px": 3842 }
-    ]
-  }
+    "model": "skin_classification",
+    "findings": [ { "bbox": [x1,y1,x2,y2], "confidence": 0.94, "class_id": 4, "area_px2": 3842.0 } ],
+    "num_detections": 1,
+    "top_confidence": 0.94,
+    "orig_size": [w, h],
+    "heatmap_path": "/data/heatmaps/heatmap_abc123.png",
+    "processing_time_s": 0.42
+  },
+  "error": null
 }
 ```
 
-Note: presigned URLs expire in 1 hour. Do not cache them.
+The heatmap is served by the gateway at `/static/heatmaps/<filename>` (basename of `heatmap_path`).
 
 ---
 
 ## GradCAM Service
 
 ### POST /api/v1/explain
-Generate a GradCAM heatmap for a model output.
+Compute an EigenCAM heatmap for a model + image. Called by the analysis worker; failures are non-fatal there.
 
 **Request**
 ```json
 {
   "model_name": "skin_classification" | "pneumonia_detection" | "mri_segmentation",
-  "image_url": "s3://medvision/studies/{study_id}/original.jpg",
+  "image_path": "/data/studies/{study_id}/lesion.png",
   "target_class": 4
 }
 ```
@@ -158,10 +140,10 @@ Generate a GradCAM heatmap for a model output.
 **Response** `200`
 ```json
 {
-  "heatmap_url": "https://…/results/{job_id}/gradcam.png?X-Amz-Expires=3600",
-  "top_regions": [
-    { "bbox": [x1, y1, x2, y2], "score": 0.87 }
-  ]
+  "heatmap_path": "/data/heatmaps/heatmap_abc123.png",
+  "cam_shape": [40, 40],
+  "top_regions": [ { "quadrant": 0, "mean_activation": 0.61, "max_activation": 1.0 } ],
+  "num_detections": 1
 }
 ```
 
@@ -170,63 +152,58 @@ Generate a GradCAM heatmap for a model output.
 ## Report Service
 
 ### POST /api/v1/reports/generate
-Trigger AI report generation from completed analysis jobs.
+Generate an AI report from structured findings. Requires the LLM model to be loaded
+(`/ready` → `model: true`), otherwise returns `503`.
 
 **Request**
 ```json
 {
   "study_id": "uuid",
-  "job_ids": ["uuid", "uuid"],
-  "patient_context": {
-    "age": 45,
-    "sex": "F",
-    "clinical_indication": "Headache, vision changes"
-  }
+  "modality": "MRI" | "CXR" | "DERM",
+  "job_ids": ["uuid"],
+  "findings": { "confidence": 0.94, "labels": ["lesion"], "bbox_count": 1, "raw": {} },
+  "patient_context": { "age": 45, "sex": "F", "clinical_indication": "Headache" }
 }
 ```
 
 **Response** `202`
 ```json
-{ "report_id": "uuid", "status": "generating" }
+{ "report_id": "uuid", "status": "pending", "modality": "MRI" }
 ```
 
 ---
 
 ### GET /api/v1/reports/{report_id}
-Retrieve a generated report.
+Retrieve a generated report. Also: `GET /api/v1/reports/study/{study_id}`.
 
 **Response** `200`
 ```json
 {
   "report_id": "uuid",
-  "status": "completed" | "generating" | "failed",
+  "status": "completed" | "generating" | "pending" | "failed",
   "modality": "MRI",
-  "content": "## MRI Brain Report\n\n**Clinical Indication** ...",
-  "created_at": "2026-04-26T12:00:00Z"
+  "content": "...generated report...\n\nDISCLAIMER: ...",
+  "created_at": "2026-06-27T12:00:00Z"
 }
 ```
 
-Report sections:
-1. Clinical indication (from `patient_context`)
-2. Technique (auto-filled from modality)
-3. Findings (LLM expansion of structured ML output)
-4. Impression (LLM summary)
-5. Confidence disclaimer (always appended — AI-assisted, requires radiologist review)
+Report sections: clinical indication, technique (from modality), findings (LLM expansion),
+impression (LLM summary), and an always-appended AI-assistance disclaimer.
 
 ---
 
 ## Health Endpoints
 
-All services expose identical health endpoints (no auth required):
+All services expose these (no auth):
 
 ```
 GET /health   → { "status": "ok" }
-GET /ready    → { "status": "ok", "checks": { "db": true, "redis": true } }
+GET /ready    → { "status": "ok"|"degraded", "checks": { ... } }
 GET /metrics  → Prometheus text format
 ```
 
-Readiness checks differ per service:
-- `upload_service`: MinIO reachable
-- `analysis_service`: PostgreSQL, Redis, Triton gRPC reachable
-- `report_service`: PostgreSQL, Anthropic API key configured
-- `gradcam_service`: MinIO reachable
+Readiness checks per service:
+- `upload_service`: PostgreSQL
+- `analysis_service`: PostgreSQL, Redis, and (only when `INFERENCE_BACKEND=triton`) Triton
+- `gradcam_service`: process liveness
+- `report_service`: PostgreSQL, Ollama model loaded (`model: true`)

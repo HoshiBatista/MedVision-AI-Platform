@@ -1,7 +1,7 @@
 # MedVision AI — Статус и план развития
 
 > Рабочий трекинг-документ: что уже сделано и что осталось. Обновляй по мере прогресса.
-> Последнее обновление: 2026-06-18.
+> Последнее обновление: 2026-06-27.
 
 ---
 
@@ -11,8 +11,8 @@
   `analysis_service`, `gradcam_service`, `report_service`.
 - **ML**: YOLOv11 (Ultralytics) для 3 задач (MRI-seg, pneumonia-det, skin-det),
   веса `ml/<task>/best.pt`, экспорт в ONNX → `triton_models/`.
-- **Инференс**: Triton (HTTP), пост-обработка YOLO в `analysis_service`.
-- **Отчёты**: BioGPT (`microsoft/biogpt`) локально, без внешних API.
+- **Инференс**: два бэкенда по `INFERENCE_BACKEND` — `onnx` (локальный ONNX Runtime на CPU, дефолт) и `triton` (GPU, профиль). Пост-обработка YOLO в `analysis_service`.
+- **Отчёты**: локальный Ollama (`OpenBioLLM-8B` Q8 по умолчанию), `report_service` — тонкий HTTP-клиент, без внешних API.
 - **Хранилище**: локальная ФС (`/data/studies`, `/data/heatmaps`) — без MinIO.
 - **Фронтенд**: React + TypeScript + Vite (Zustand, axios, react-router).
 - **Gateway**: Nginx + JWT, маршрутизация на сервисы.
@@ -23,9 +23,13 @@
 ## ✅ Сделано
 
 ### Сервисы и ML
-- [x] Реализованы все 5 сервисов (auth на JWT, upload, analysis+Celery, gradcam EigenCAM, report BioGPT)
-- [x] YOLOv11 обучены, ONNX уложены в Triton model repo
+- [x] Реализованы все сервисы (auth на JWT, upload, analysis+Celery, gradcam EigenCAM, report через Ollama, +сервис ollama)
+- [x] YOLOv11 обучены, ONNX уложены в model repo (`triton_models/`)
 - [x] GradCAM/EigenCAM на ONNX (gradient-free)
+- [x] **CPU-инференс по умолчанию** (ONNX Runtime в воркере) + **GPU-вариант через Triton** (`make up-gpu`, `docker-compose.gpu.yml`)
+- [x] **Отчёты переведены с BioGPT на Ollama/OpenBioLLM-8B** — `report_service` стал тонким HTTP-клиентом (без torch/transformers); ollama как сервис (CPU/GPU), веса в `ollama_data`
+- [x] **Полный happy-path реально работает на CPU** и проверяется e2e: upload → предсказание → heatmap (через gateway) → отчёт
+- [x] Фикс gradcam: чтение `/data/studies` (том) + резолв ONNX по glob `*.onnx` (не хардкод `model.onnx`)
 
 ### Frontend
 - [x] Переписан с vanilla HTML/JS на **React + TypeScript + Vite**
@@ -71,13 +75,13 @@
 ### Tier 1 — критично
 - [x] **Дотестирован celery-воркер** `analysis_service/app/workers/tasks.py` (7 тестов, мок Triton+gradcam, реальный SQLite через `SyncSessionFactory`); `tasks.py` 0→100% покрытия
 - [x] **Alembic-миграции** — initial-ревизии для всех 4 DB-сервисов (auth/upload/analysis/report), async `env.py`, URL/metadata из настроек. `create_tables()` теперь под флагом `auto_create_tables` (default True для dev/тестов); в compose сервисы запускают `alembic upgrade head` перед uvicorn, `AUTO_CREATE_TABLES=false`. Makefile: `make migrate` / `make makemigration`
-- [x] **e2e по docker-compose** — `tests/e2e` (smoke+контракт через gateway): health всех сервисов, JWT-флоу login→upload→analyze→results до терминального статуса. CI-job `e2e` (поднимает стек, без Triton/BioGPT) + `make e2e`. Реальный ML не гоняется (job штатно завершается `failed` без Triton)
+- [x] **e2e по docker-compose** — `tests/e2e` (smoke+контракт через gateway): health всех сервисов, JWT-флоу и **полный happy-path с реальным ML на CPU** (предсказание ONNX → heatmap → отчёт Ollama). CI-job `e2e` (поднимает стек, `INFERENCE_BACKEND=onnx`, крошечная LLM `qwen2.5:0.5b`) + `make e2e`
 - [x] ~~Объектное хранилище (MinIO/S3)~~ — **решено не делать**: локальная ФС (`/data/studies`, `/data/heatmaps`) остаётся постоянным дизайном, не временным
 
 ### Tier 2 — продакшн-готовность
 - [ ] **OpenTelemetry / Jaeger** — спаны на вызовы Triton и запросы к БД (сейчас только Prometheus)
 - [ ] **Helm-чарты / K8s** — `infra/helm` и `infra/terraform` пустые
-- [x] **Хардненинг контейнеров** — 5 python-сервисов: multi-stage (venv, компиляторы только в builder), non-root `appuser` (uid 10001, единый для прав на shared-volume'ы), HEALTHCHECK (python urllib), runtime-либы по минимуму (analysis без libpq — psycopg2-binary бандлит; gradcam/report + libgomp1). Все базовые образы (python/node/nginx) запинены по `@sha256`. report: HF-кэш → `/data/hf_cache` (writable non-root). _Остаётся: non-root для nginx (gateway/frontend) — нужен unprivileged-образ + смена порта_
+- [x] **Хардненинг контейнеров** — 5 python-сервисов: multi-stage (venv, компиляторы только в builder), non-root `appuser` (uid 10001, единый для прав на shared-volume'ы), HEALTHCHECK (python urllib), runtime-либы по минимуму (analysis без libpq — psycopg2-binary бандлит; gradcam/report + libgomp1). Все базовые образы (python/node/nginx) запинены по `@sha256`. report: после перехода на Ollama образ похудел (без torch/transformers). _Остаётся: non-root для nginx (gateway/frontend) — нужен unprivileged-образ + смена порта_
 - [ ] **Auth** — refresh-токены, сброс пароля, rate-limiting на gateway
 - [x] **Запинены зависимости во всех сервисах** — `analysis_service` переведён с `>=` на `==` (был единственным с дрейфом; остальные 4 уже на `==`). Версии выровнены на остальной проект; `tritonclient==2.54.0`+`numpy==1.26.4` (как gradcam/ml). `ml/` (тренировка) — отдельно, torch там намеренно гибкий под локальный CUDA
 
@@ -97,7 +101,7 @@
 - [x] ~~Несоответствие путей gateway↔upload~~ — выровнено на `/api/v1/upload` (см. баг #7).
 - [x] ~~JWT не сквозной в upload/analysis~~ — исправлено (см. баг #8).
 - [ ] `tests/integration` (верхний уровень) — всё ещё заглушки (0 строк). `tests/e2e` реализован (CI-job `e2e`).
-- [x] ~~e2e-job не в обязательном гейте~~ — внесён в `ci-success` (после зелёного прогона 8/9→9/9). Тяжёлый (билдит весь стек, torch в report), но блокирующий.
+- [x] ~~e2e-job не в обязательном гейте~~ — внесён в `ci-success`. Тяжёлый (билдит весь стек, тянет крошечную LLM в ollama), но блокирующий.
 - [ ] mypy в CI — advisory (strict не проходит); довести типизацию и сделать блокирующим.
 
 ---
@@ -116,7 +120,7 @@ python -m pytest tests --cov=app --cov-report=term-missing
 Особенности conftest по сервисам:
 - все используют **SQLite** вместо Postgres (env `DATABASE_URL` ставится до импорта app);
 - `upload`/`analysis` переопределяют Redis-сессионную авторизацию (`get_current_user_id`);
-- `analysis` мокает Celery `apply_async`; `report` **заглушает torch/transformers** (BioGPT не качается);
+- `analysis` мокает Celery `apply_async`; `report` **мокает Ollama-клиент** (`ensure_model`/`generate`, модель не качается);
 - UUID-поля на SQLite имеют NUMERIC-аффинность → в тестах использовать UUID с hex-буквами (не из одних цифр).
 
 CI: всё в `.github/workflows/ci.yml`. Чтобы добавить новый сервис в тест-матрицу —
@@ -125,7 +129,7 @@ CI: всё в `.github/workflows/ci.yml`. Чтобы добавить новый
 ---
 
 ## Рекомендуемый следующий шаг
-Celery-воркер и Alembic-миграции — сделаны; объектное хранилище решено не делать (локальная ФС — постоянный дизайн).
-Текущая задача — **e2e по docker-compose** (`tests/e2e`); параллельно из Tier 2 — **запинить зависимости во всех сервисах**.
-Перед мержем стоит один раз поднять стек (`make up`) и убедиться, что `alembic upgrade head` проходит на Postgres
-(локально миграции верифицированы на SQLite: `upgrade head` ок для всех 4 сервисов).
+Инференс (CPU ONNX + GPU Triton), отчёты на Ollama и полный e2e happy-path — сделаны.
+Из оставшегося приоритетное: **Helm-чарты / K8s** (`infra/helm` пустой), **refresh-токены и rate-limiting** на gateway,
+затем **OpenTelemetry/Jaeger** и явные `config.pbtxt` для Triton. На GPU-хосте стоит один раз проверить
+`make up-gpu` (Triton + ollama на видеокарте) и подтвердить реальный реф модели OpenBioLLM-8B GGUF.

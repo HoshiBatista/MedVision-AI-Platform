@@ -9,7 +9,7 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-Production-grade medical imaging analysis platform. Ingests DICOM / PNG / JPEG images, runs deep-learning inference on three clinical tasks, overlays explainability heatmaps, and generates AI-assisted radiology reports via a local BioGPT model.
+Production-grade medical imaging analysis platform. Ingests DICOM / PNG / JPEG images, runs deep-learning inference on three clinical tasks, overlays explainability heatmaps, and generates AI-assisted radiology reports via a local LLM (Ollama / OpenBioLLM-8B). Inference runs on CPU out of the box (local ONNX Runtime) or on GPU via NVIDIA Triton — all on-prem, no external API.
 
 ---
 
@@ -21,7 +21,7 @@ Production-grade medical imaging analysis platform. Ingests DICOM / PNG / JPEG i
 | Pneumonia Detection (CXR) | YOLOv11-det | Atypical, Indeterminate, Typical | 640×640 |
 | Skin Lesion Detection | YOLOv11-det | akiec, bcc, bkl, df, mel, nv, vasc | 640×640 |
 
-All models are exported to ONNX (opset 17) and served via NVIDIA Triton Inference Server.
+All models are exported to ONNX (opset 17) and served either by a local ONNX Runtime (CPU, default) or NVIDIA Triton (GPU) — see [Inference backends](#inference-backends).
 
 ---
 
@@ -30,15 +30,15 @@ All models are exported to ONNX (opset 17) and served via NVIDIA Triton Inferenc
 | Layer | Technology |
 |---|---|
 | ML Training | Ultralytics YOLO + ClearML |
-| Model Serving | NVIDIA Triton (ONNX Runtime backend) |
+| Model Serving | Local ONNX Runtime (CPU, default) **or** NVIDIA Triton (GPU) — via `INFERENCE_BACKEND` |
 | Backend Services | FastAPI (async) |
 | Task Queue | Celery + Redis |
-| Storage | MinIO (images/results), PostgreSQL (metadata) |
+| Storage | Local filesystem (`/data/studies`, `/data/heatmaps`) + PostgreSQL (metadata) |
 | Gateway | Nginx + JWT |
-| Observability | Prometheus + Grafana + Jaeger (OpenTelemetry) |
-| Report Generation | Anthropic API (claude-sonnet-4) |
+| Observability | Prometheus + Grafana (OpenTelemetry/Jaeger planned) |
+| Report Generation | Local LLM via Ollama (default OpenBioLLM-8B) — no external API |
 | Frontend | React + TypeScript + Vite |
-| Containers | Docker Compose (dev) / Helm + Kubernetes (prod) |
+| Containers | Docker Compose (dev); Helm/K8s scaffolding planned |
 
 ---
 
@@ -91,14 +91,14 @@ variant layers `docker-compose.gpu.yml` on top of the base stack.
 │   └── skin_classification/ YOLOv11-det — skin lesions (HAM10000)
 ├── services/
 │   ├── gateway/           Nginx + JWT validation
-│   ├── upload_service/    DICOM ingestion MinIO
-│   ├── analysis_service/  Job orchestration, Triton gRPC client
-│   ├── report_service/    LLM report generation (Anthropic)
+│   ├── upload_service/    DICOM ingestion → local disk
+│   ├── analysis_service/  Job orchestration; ONNX Runtime (CPU) / Triton (GPU) client
+│   ├── report_service/    LLM report generation (thin Ollama client)
 │   ├── auth_service/      JWT issuance, user management
-│   └── gradcam_service/   GradCAM / GradCAM++ explainability
-├── triton_models/         Triton model repository (config + ONNX)
+│   └── gradcam_service/   EigenCAM explainability (ONNX, CPU)
+├── triton_models/         ONNX model repository (served by ONNX Runtime or Triton)
 ├── frontend/              React UI
-├── infra/                 Helm charts, Terraform, Prometheus/Grafana
+├── infra/                 Prometheus/Grafana config (Helm/Terraform: planned, empty)
 └── tests/                 Integration + E2E test suites
 ```
 

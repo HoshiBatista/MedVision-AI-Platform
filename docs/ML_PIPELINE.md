@@ -1,6 +1,6 @@
 # ML Pipeline
 
-All training runs on [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) and is tracked in ClearML. Trained weights are exported to ONNX opset 17 and deployed to Triton.
+All training runs on [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) and is tracked in ClearML. Trained weights are exported to ONNX opset 17 and served either by a local ONNX Runtime (CPU, default) or NVIDIA Triton (GPU) — both read the same `triton_models/<model>/1/` repository.
 
 ---
 
@@ -14,7 +14,7 @@ All training runs on [Ultralytics YOLO](https://github.com/ultralytics/ultralyti
 | Classes | GLIOMA, MENINGIOMA, NOTUMOR, PITUITARY |
 | Input size | 640×640 |
 | ClearML project | `MedVision/MRI-Segmentation` |
-| Triton model name | `mri_segmentation` |
+| Model name        | `mri_segmentation` |
 | Dataset source | Roboflow — `brain-tumor-segmentation-r4in2 v2` |
 
 **Training config** (`ml/mri_segmentation/config.yaml`):
@@ -44,7 +44,7 @@ All training runs on [Ultralytics YOLO](https://github.com/ultralytics/ultralyti
 | Classes | Atypical, Indeterminate, Typical |
 | Input size | 640×640 |
 | ClearML project | `MedVision/Pneumonia-Detection` |
-| Triton model name | `pneumonia_detection` |
+| Model name        | `pneumonia_detection` |
 | Dataset source | Roboflow — `pneumonia-detection-ssibx v3` (SIIM-CXR) |
 
 **Training config** (`ml/pneumonia_detection/config.yaml`):
@@ -67,7 +67,7 @@ All training runs on [Ultralytics YOLO](https://github.com/ultralytics/ultralyti
 | Classes | akiec, bcc, bkl, df, mel, nv, vasc |
 | Input size | 640×640 |
 | ClearML project | `MedVision/Skin-Classification` |
-| Triton model name | `skin_classification` |
+| Model name        | `skin_classification` |
 | Dataset source | Roboflow — `skin-lesion-jxjgm v8` (HAM10000-style) |
 
 **Training config** (`ml/skin_classification/config.yaml`):
@@ -246,23 +246,29 @@ python ml/check_clearml.py
 
 ---
 
-## Triton Model Repository
+## Model Repository
 
-After export, each model lives at:
+Each model lives under a Triton-style layout, read by **both** backends (local ONNX
+Runtime and Triton). The ONNX file is resolved by glob (`1/*.onnx`), so its exact name
+doesn't matter — the committed files are named per task (below), while `export_onnx.py`
+writes `model.onnx`; either is picked up:
 
 ```
 triton_models/
 ├── mri_segmentation/
-│   ├── config.pbtxt
-│   └── 1/model.onnx
+│   ├── config.pbtxt        (empty → auto-config)
+│   └── 1/mri_seg.onnx
 ├── pneumonia_detection/
 │   ├── config.pbtxt
-│   └── 1/model.onnx
+│   └── 1/pn_detection.onnx
 └── skin_classification/
     ├── config.pbtxt
-    └── 1/model.onnx
+    └── 1/skin_classification.onnx
 ```
 
-`config.pbtxt` declares backend (`onnxruntime`), input/output tensor names and shapes, and dynamic batching settings. See `triton_models/*/config.pbtxt` for the exact tensor specs per model.
+The `config.pbtxt` files are currently **empty** — Triton auto-generates the config from the
+ONNX graph (input `images`, outputs `output0`/`output1`). To pin it explicitly, declare
+`backend: "onnxruntime"`, the input/output tensors, `instance_group`, and `dynamic_batching`.
 
-Key Triton constraint: always send tensors with shape `[batch, C, H, W]` — even for batch=1 Triton rejects wrong rank.
+Input contract (both backends): `[1, 3, 640, 640]` FP32, normalized to `[0, 1]`. Triton
+rejects wrong tensor rank, so always send the full 4-D shape even for batch=1.

@@ -49,7 +49,8 @@ python download_datasets.py --task mri   # single dataset
 ### 4. Start the platform
 
 ```bash
-make up        # starts all containers (gateway, services, redis, postgres, minio, triton)
+make up        # CPU stack: gateway, services, ollama, redis, postgres (no GPU needed)
+make up-gpu    # same, but inference via Triton on GPU (INFERENCE_BACKEND=triton)
 make logs SERVICE=analysis_service   # tail a specific service
 make down      # stop and remove containers
 ```
@@ -166,7 +167,8 @@ make test-e2e
 pytest tests/integration/test_upload_pipeline.py -v
 ```
 
-Integration tests hit real PostgreSQL, Redis, and MinIO — no mocking of infrastructure.
+The `e2e` suite boots the full Docker stack and runs the real happy-path (upload → ONNX
+inference → EigenCAM heatmap → Ollama report) through the gateway — no infrastructure mocking.
 
 ---
 
@@ -209,10 +211,10 @@ Recommended extensions:
 
 | Issue | Fix |
 |---|---|
-| Triton rejects tensor | Always send `[batch, C, H, W]` even for batch=1 — wrong rank is rejected |
+| Wrong inference tensor | Always send `[1, 3, 640, 640]` FP32 — both backends reject wrong rank |
 | Wrong MRI intensities | Apply `RescaleSlope`/`RescaleIntercept` from DICOM header before inference |
 | ClearML in Celery workers | Use `Task.get_task()` not `Task.init()` inside workers |
-| GradCAM on ViT | Standard GradCAM doesn't work on attention layers — use attention rollout or target the final LayerNorm |
-| Stale MinIO URLs | Presigned URLs expire in 1h — never cache them past that |
+| ONNX file not found | Models are resolved by glob `triton_models/<model>/1/*.onnx` — name is irrelevant, the dir must exist |
+| No heatmap in results | `gradcam_service` needs the `study_data` volume mounted (ro) to read the source image |
 | Celery result loss | Use Redis as result backend, not RPC — RPC breaks on worker restart |
 | SSL on Python 3.13/macOS | Set `SSL_CERT_FILE` to `certifi.where()` (see `download_datasets.py`) |

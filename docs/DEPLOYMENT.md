@@ -4,9 +4,9 @@
 
 | Environment | Stack | Notes |
 |---|---|---|
-| Local dev | Docker Compose | `make up`, hot-reload available |
-| Staging | Docker Compose on VM | same compose file, `.env` overrides |
-| Production | Kubernetes + Helm | `infra/helm/` charts |
+| Local dev | Docker Compose | `make up` (CPU) or `make up-gpu` (GPU) |
+| Staging | Docker Compose on a VM | same compose file, `.env` overrides |
+| Production | Kubernetes + Helm | **planned** — `infra/helm/` / `infra/terraform/` are empty scaffolding |
 
 ---
 
@@ -18,185 +18,123 @@ Copy `.env.example` to `.env` and fill in every value. Never commit `.env`.
 cp .env.example .env
 ```
 
-Key variables to change from defaults:
+Key variables:
 
 | Variable | Default | Production action |
 |---|---|---|
-| `POSTGRES_PASSWORD` | `change_me_in_prod` | Generate strong random password |
-| `MINIO_SECRET_KEY` | `change_me_in_prod` | Generate strong random password |
+| `POSTGRES_PASSWORD` | `medvision` | Generate a strong random password |
 | `JWT_SECRET_KEY` | placeholder | `openssl rand -hex 32` |
-| `ANTHROPIC_API_KEY` | `sk-ant-...` | Real key from Anthropic console |
-| `CLEARML_API_ACCESS_KEY` | placeholder | From ClearML settings |
-| `ENVIRONMENT` | `development` | Set to `production` |
-| `DOCS_ENABLED` | `true` | Set to `false` |
-| `ALLOWED_ORIGINS` | `http://localhost:3000` | Production frontend URL |
+| `INFERENCE_BACKEND` | `onnx` | `triton` for GPU serving |
+| `LLM_MODEL_NAME` | OpenBioLLM-8B Q8 (HF GGUF) | Verify the tag, or pick another Ollama model |
+| `OLLAMA_URL` | `http://ollama:11434` | Point at an external Ollama if not in-compose |
+| `CLEARML_API_ACCESS_KEY` | placeholder | From ClearML settings (training only) |
+| `ENVIRONMENT` | `development` | `production` |
+| `DOCS_ENABLED` | `true` | `false` |
+
+There is no object-storage or external-LLM configuration — storage is local volumes and the LLM is the in-cluster Ollama.
 
 ---
 
 ## Docker Compose (Dev / Staging)
 
-### Start full stack
+### Start the stack
 
 ```bash
-make up
-# or
-docker compose up -d
+make up        # CPU inference (local ONNX Runtime) — no GPU required
+make up-gpu    # GPU inference via NVIDIA Triton (needs the NVIDIA Container Toolkit)
+# or plain:    docker compose up -d
 ```
 
-Services started:
-- `gateway` — Nginx on :80
+Services started (default / CPU):
+- `gateway` — :80
 - `auth_service` — :8001
 - `upload_service` — :8002
-- `analysis_service` + Celery worker — :8003
-- `report_service` — :8005
+- `analysis_service` + `analysis_worker` (Celery) — :8003
 - `gradcam_service` — :8004
-- `postgres` — :5432
-- `redis` — :6379
-- `minio` — :9000 (API) / :9001 (console)
-- `triton` — :8000 (HTTP) / :8001 (gRPC) / :8002 (metrics)
-- `prometheus` — :9090
-- `grafana` — :3001
-- `jaeger` — :16686 (UI) / :14268 (collector)
+- `report_service` — :8005
+- `ollama` — :11434 (report LLM)
+- `frontend` — :3000
+- `postgres` — :5432, `redis` — :6379
 
-### Triton GPU requirement
+Optional profiles:
+- `--profile triton` (via `make up-gpu`) → `triton` on :8010 (HTTP) / :8011 (gRPC) / :8012 (metrics)
+- `--profile monitoring` (via `make up-monitoring`) → `prometheus` :9090, `grafana` :3001
 
-Triton requires an NVIDIA GPU with the NVIDIA Container Toolkit installed:
+### GPU requirement
+
+Only the GPU variant needs hardware: an NVIDIA GPU + the NVIDIA Container Toolkit. The
+default CPU stack runs anywhere (including Apple Silicon) — `analysis_worker` runs ONNX
+Runtime on CPU and `ollama` runs a quantised model on CPU. The GPU overlay
+(`docker-compose.gpu.yml`) reserves the GPU for both `triton` and `ollama`.
 
 ```bash
-# Install NVIDIA Container Toolkit (Ubuntu)
-distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list \
-  | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+# Install the NVIDIA Container Toolkit (Ubuntu)
 sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
 sudo systemctl restart docker
 ```
-
-On Apple Silicon (development only), Triton is not available natively — run models locally with `device="mps"` in the training scripts and skip Triton.
 
 ### Useful compose commands
 
 ```bash
 docker compose logs -f analysis_service
-docker compose restart triton
 docker compose exec postgres psql -U medvision medvision
-docker compose exec minio mc ls local/medvision
+docker compose exec ollama ollama list
 ```
 
 ---
 
-## Model Deployment to Triton
+## Model Deployment
 
-1. Train the model:
-   ```bash
-   python ml/mri_segmentation/train.py
-   ```
-
-2. Export to ONNX:
-   ```bash
-   python ml/mri_segmentation/export_onnx.py \
-     --weights runs/mri_segmentation/train/weights/best.pt
-   ```
-   This copies `model.onnx` to `triton_models/mri_segmentation/1/model.onnx`.
-
-3. Reload Triton (zero-downtime model reload):
-   ```bash
-   # HTTP model control API
-   curl -X POST http://localhost:8000/v2/repository/models/mri_segmentation/load
-   ```
-   Or restart the container:
-   ```bash
-   docker compose restart triton
-   ```
-
-4. Verify model is ready:
-   ```bash
-   curl http://localhost:8000/v2/models/mri_segmentation/ready
-   # → {"ready":true}
-   ```
-
----
-
-## Kubernetes / Helm (Production)
-
-Helm charts are in `infra/helm/`. Each service has its own chart.
+Trained YOLOv11 weights are exported to ONNX and placed in the Triton-style repo:
 
 ```bash
-# Add values override for your environment
-cp infra/helm/values.yaml infra/helm/values.prod.yaml
-
-# Deploy
-helm upgrade --install medvision-ai ./infra/helm \
-  --values infra/helm/values.prod.yaml \
-  --namespace medvision \
-  --create-namespace
+python ml/mri_segmentation/export_onnx.py \
+  --weights runs/mri_segmentation/train/weights/best.pt
+# → writes the ONNX into triton_models/mri_segmentation/1/
 ```
 
-Production considerations:
-- Use a managed PostgreSQL (e.g., RDS, Cloud SQL) instead of the in-cluster container
-- Use managed Redis (ElastiCache, Memorystore) for Celery broker/backend
-- Use real S3 (or GCS with S3-compatible API) instead of MinIO
-- Set resource requests/limits for Triton (needs GPU node pool)
-- Enable horizontal pod autoscaling on analysis_service Celery workers
-- Store secrets in Kubernetes Secrets or an external vault — not in `values.yaml`
+Both inference backends read this same repo (`triton_models/<model>/1/*.onnx`, resolved by glob):
+- **CPU (default)**: `analysis_worker` loads the ONNX directly via ONNX Runtime — restart the worker to pick up a new model (`docker compose restart analysis_worker`).
+- **GPU**: Triton serves the repo — reload via the model-control API or `docker compose restart triton`.
+
+The report LLM is pulled into Ollama automatically at `report_service` startup (`ensure_model`).
 
 ---
 
 ## Database Migrations
 
-Database schema is managed via Alembic (configured per service in `services/*/app/`):
+Schema is managed via Alembic per service; each service runs `alembic upgrade head` before
+its app starts (compose `command`). The four DB services share one database but use separate
+`alembic_version_<svc>` tables.
 
 ```bash
-# Inside the service container
-docker compose exec auth_service alembic upgrade head
-docker compose exec analysis_service alembic upgrade head
+make migrate                      # all DB services
+docker compose exec auth_service alembic upgrade head   # one service
 ```
 
-Never run migrations against production without a backup.
+---
+
+## Kubernetes / Helm (planned)
+
+`infra/helm/` and `infra/terraform/` are empty placeholders — there is no working chart yet.
+A production K8s deployment would need: a chart per service (Deployment/Service/Ingress),
+PVCs for the study/heatmap volumes, a GPU node pool for `triton`/`ollama`, an HPA on the
+Celery worker, and secrets in K8s Secrets / a vault.
 
 ---
 
 ## Observability
 
-### Prometheus
-
-Scrapes all services on their `/metrics` endpoint. Config: `infra/monitoring/prometheus.yml`.
-
-Open Prometheus: `http://localhost:9090`
-
-### Grafana
-
-Pre-built dashboards in `infra/monitoring/grafana/dashboards/`.
-
-Open Grafana: `http://localhost:3001` (default credentials: `admin` / `admin`, change on first login)
-
-### Jaeger (Distributed Tracing)
-
-Open Jaeger UI: `http://localhost:16686`
-
-Each Triton gRPC call and database query emits a span. Use this to trace slow requests across services.
-
-### Alerting
-
-Alert rules defined in `infra/monitoring/alerts.yml`. Key alerts:
-- Service instance down > 2 minutes
-- HTTP 5xx error rate > 5%
-- Inference latency P99 > 2s
-- Celery queue depth > 50 tasks
-
-Configure Alertmanager to route alerts to Slack/PagerDuty.
+- **Prometheus** (`--profile monitoring`): scrapes every `/metrics`. Config: `infra/monitoring/prometheus.yml`. UI: `http://localhost:9090`.
+- **Grafana**: dashboards in `infra/monitoring/grafana/dashboards/`. UI: `http://localhost:3001` (default `admin`/`admin`).
+- **Alerting**: rules in `infra/monitoring/alerts.yml` (service down, 5xx rate, inference latency, Celery queue depth).
+- **Tracing (OpenTelemetry → Jaeger)**: planned, not yet wired.
 
 ---
 
 ## CI/CD
 
-GitHub Actions workflow: `.github/workflows/blank.yml` (extend as needed).
-
-Recommended pipeline stages:
-1. `ruff` + `mypy` lint across all services
-2. Unit tests
-3. Docker build (fail fast if any Dockerfile has errors)
-4. Integration tests against `docker compose`
-5. Push image to registry
-6. `helm upgrade` to staging
-7. Manual approval gate → production deploy
+GitHub Actions: `.github/workflows/ci.yml`. Jobs: ruff + mypy (advisory), bandit, per-service
+pytest with coverage, frontend typecheck/lint/build, hadolint, docker build of all images,
+compose validation, **e2e** (boots the full stack and runs `tests/e2e`), CodeQL, repo hygiene
+(actionlint/yamllint/gitleaks), aggregated by a `ci-success` gate.
