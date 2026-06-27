@@ -11,6 +11,7 @@ redis[hiredis]==5.2.1
 celery[redis]==5.4.0
 httpx==0.28.1
 tritonclient[http]==2.54.0  # pinned: 2.50–2.54 cap numpy<2 (kept with numpy 1.26.4)
+onnxruntime==1.19.2  # local CPU inference backend (INFERENCE_BACKEND=onnx); numpy<2 compatible
 numpy==1.26.4
 Pillow==11.0.0
 pydicom==3.0.1

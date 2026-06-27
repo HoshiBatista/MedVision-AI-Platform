@@ -71,14 +71,18 @@ async def ready() -> dict:
     except Exception:
         checks["redis"] = False
 
-    try:
-        import httpx
-        resp = httpx.get(
-            f"http://{settings.triton_http_url}/v2/health/ready", timeout=2.0
-        )
-        checks["triton"] = resp.status_code == 200
-    except Exception:
-        checks["triton"] = False
+    if settings.inference_backend.lower() == "triton":
+        try:
+            import httpx
+            resp = httpx.get(
+                f"http://{settings.triton_http_url}/v2/health/ready", timeout=2.0
+            )
+            checks["triton"] = resp.status_code == 200
+        except Exception:
+            checks["triton"] = False
+    else:
+        # Local ONNX backend: inference needs no external server.
+        checks["inference"] = True
 
     all_ok = all(checks.values())
     return {"status": "ok" if all_ok else "degraded", "checks": checks}

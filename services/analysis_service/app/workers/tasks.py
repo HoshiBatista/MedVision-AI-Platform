@@ -21,7 +21,8 @@ from app.core.database import SyncSessionFactory
 from app.core.metrics import ANALYSIS_DURATION_SECONDS, ANALYSIS_JOBS_TOTAL
 from app.models.job import AnalysisJob
 from app.services.gradcam_service import request_heatmap
-from app.services.triton_client import _TASK_TO_MODEL, TritonClient
+from app.services.inference import get_inference_client
+from app.services.triton_client import _TASK_TO_MODEL
 from app.workers.celery_app import celery
 
 logger = structlog.get_logger()
@@ -62,7 +63,7 @@ def run_analysis(self: Task, job_id: str) -> dict[str, Any]:
             file_path: str = row[0]
             logger.info("study file located", file_path=file_path)
 
-            client = TritonClient()
+            client = get_inference_client()
             infer_result = client.run(task=task, file_path=file_path)
 
             model_name = _TASK_TO_MODEL[task]

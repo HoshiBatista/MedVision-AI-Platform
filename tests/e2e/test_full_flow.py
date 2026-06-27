@@ -3,9 +3,10 @@ End-to-end smoke + contract tests against a live docker-compose stack.
 
 Covers the wiring that per-service unit tests cannot: JWT issued by auth_service
 is accepted by upload/analysis, the gateway routes correctly, and the
-upload -> analyze -> results pipeline reaches a terminal state. Real ML inference
-(Triton/BioGPT) is not exercised — without Triton the analysis job is expected to
-fail gracefully, which is itself part of the contract.
+upload -> analyze -> results pipeline runs a real prediction. The default stack
+uses the local ONNX Runtime (CPU) inference backend, so the analysis job is
+expected to reach 'completed' with structured inference output — no GPU/Triton
+needed. (BioGPT report generation is still not exercised here.)
 """
 
 import time
@@ -69,8 +70,8 @@ def test_pipeline_upload_analyze_results(client: httpx.Client, auth_headers: dic
     job_id = an.json()["job_id"]
     assert job_id
 
-    # 3. Poll until the worker drives the job to a terminal state. Without Triton
-    #    the job is expected to end 'failed' (graceful), but 'completed' is also fine.
+    # 3. Poll until the worker drives the job to a terminal state. The local ONNX
+    #    backend runs a real prediction on CPU, so we expect 'completed'.
     deadline = time.time() + RESULT_TIMEOUT
     body: dict = {}
     while time.time() < deadline:
@@ -84,3 +85,10 @@ def test_pipeline_upload_analyze_results(client: httpx.Client, auth_headers: dic
     assert body.get("status") in TERMINAL, f"job did not finish in {RESULT_TIMEOUT}s: {body}"
     assert body["job_id"] == job_id
     assert body["task"] == "classification"
+
+    # Real inference must have succeeded (not just reached a terminal state).
+    assert body["status"] == "completed", f"analysis failed: {body.get('error')}"
+    results = body.get("results") or {}
+    assert results.get("model") == "skin_classification", results
+    assert "num_detections" in results, results
+    assert results.get("orig_size") == [1, 1], results  # 1x1 PNG fixture echoed back

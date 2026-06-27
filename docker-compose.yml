@@ -167,6 +167,7 @@ services:
       REDIS_URL:            redis://redis:6379/0
       CELERY_BROKER_URL:    redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+      INFERENCE_BACKEND:    ${INFERENCE_BACKEND:-onnx}   # onnx (local CPU) | triton
       TRITON_HTTP_URL:      triton:8000
       GRADCAM_SERVICE_URL:  http://gradcam_service:8004
       STORAGE_ROOT:         /data/studies
@@ -213,6 +214,8 @@ services:
       REDIS_URL:             redis://redis:6379/0
       CELERY_BROKER_URL:     redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+      INFERENCE_BACKEND:     ${INFERENCE_BACKEND:-onnx}   # onnx (local CPU) | triton
+      MODEL_REPO_ROOT:       /models
       TRITON_HTTP_URL:       triton:8000
       GRADCAM_SERVICE_URL:   http://gradcam_service:8004
       STORAGE_ROOT:          /data/studies
@@ -220,6 +223,7 @@ services:
       LOG_LEVEL:             ${LOG_LEVEL:-INFO}
     volumes:
       - study_data:/data/studies
+      - ./triton_models:/models:ro   # ONNX backend reads <model>/1/*.onnx
     depends_on:
       postgres:
         condition: service_healthy

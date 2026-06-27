@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-in-production-use-a-long-random-secret"
     jwt_algorithm: str = "HS256"
 
+    # Inference backend: "onnx" runs the exported models locally on CPU via
+    # ONNX Runtime (no GPU/Triton needed — the default for dev & CI); "triton"
+    # offloads to a running Triton server (enable the `triton` compose profile).
+    inference_backend: str = "onnx"
+    model_repo_root: str = "/models"  # Triton-style repo: <root>/<model>/1/*.onnx
+
     triton_http_url: str = "triton:8000"
     gradcam_service_url: str = "http://gradcam_service:8004"
 

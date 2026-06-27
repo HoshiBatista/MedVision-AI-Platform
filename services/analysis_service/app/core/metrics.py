@@ -25,3 +25,16 @@ TRITON_INFER_ERRORS_TOTAL = Counter(
     "Triton inference errors",
     ["model", "error_type"],
 )
+
+ONNX_INFER_DURATION_SECONDS = Histogram(
+    "onnx_infer_duration_seconds",
+    "Local ONNX Runtime (CPU) inference latency",
+    buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
+    labelnames=["model"],
+)
+
+ONNX_INFER_ERRORS_TOTAL = Counter(
+    "onnx_infer_errors_total",
+    "Local ONNX Runtime (CPU) inference errors",
+    ["model", "error_type"],
+)

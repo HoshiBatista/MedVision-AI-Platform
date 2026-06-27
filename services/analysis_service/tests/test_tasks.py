@@ -84,7 +84,7 @@ def _read_job(job_id: str) -> AnalysisJob:
 def _mock_triton(monkeypatch, infer_result: dict) -> MagicMock:
     client = MagicMock()
     client.run = MagicMock(return_value=infer_result)
-    monkeypatch.setattr("app.workers.tasks.TritonClient", lambda: client)
+    monkeypatch.setattr("app.workers.tasks.get_inference_client", lambda: client)
     return client.run
 
 
@@ -158,9 +158,9 @@ def test_run_analysis_gradcam_none_still_completes(monkeypatch, seed_job):
 
 # ───────────────────────────── failure paths ───────────────────────────────
 def test_run_analysis_missing_job_returns_not_found(monkeypatch):
-    # No DB row for this id; task short-circuits before touching Triton.
+    # No DB row for this id; task short-circuits before touching inference.
     triton = MagicMock()
-    monkeypatch.setattr("app.workers.tasks.TritonClient", lambda: triton)
+    monkeypatch.setattr("app.workers.tasks.get_inference_client", lambda: triton)
 
     out = run_analysis.apply(args=["deadbeef-0000-4000-8000-000000000abc"]).result
 
@@ -188,7 +188,7 @@ def test_run_analysis_triton_error_marks_failed(monkeypatch, seed_job, no_retry)
     job_id = seed_job("detection")
     client = MagicMock()
     client.run = MagicMock(side_effect=RuntimeError("triton unreachable"))
-    monkeypatch.setattr("app.workers.tasks.TritonClient", lambda: client)
+    monkeypatch.setattr("app.workers.tasks.get_inference_client", lambda: client)
     heat = MagicMock()
     monkeypatch.setattr("app.workers.tasks.request_heatmap", heat)
 
