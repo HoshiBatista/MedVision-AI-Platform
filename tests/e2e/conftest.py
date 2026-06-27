@@ -31,10 +31,10 @@ SERVICE_PORTS = {
     "report_service": 8005,
 }
 
-# A valid, Pillow-decodable 1x1 PNG.
+# A valid, Pillow-decodable 8x8 PNG (generated via Pillow, base64-encoded).
 PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
-    "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFElEQVR4nGM8ISfH"
+    "gA0wYRUdtBIA0MoBFD5jqJkAAAAASUVORK5CYII="
 )
 
 
