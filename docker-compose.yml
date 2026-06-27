@@ -259,6 +259,7 @@ services:
       - "8004:8004"
     volumes:
       - ./triton_models:/models:ro
+      - study_data:/data/studies:ro   # read source images to compute the CAM
       - heatmap_data:/data/heatmaps
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]

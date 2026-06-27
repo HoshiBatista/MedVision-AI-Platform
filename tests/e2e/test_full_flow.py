@@ -3,10 +3,11 @@ End-to-end smoke + contract tests against a live docker-compose stack.
 
 Covers the wiring that per-service unit tests cannot: JWT issued by auth_service
 is accepted by upload/analysis, the gateway routes correctly, and the
-upload -> analyze -> results pipeline runs a real prediction. The default stack
-uses the local ONNX Runtime (CPU) inference backend, so the analysis job is
-expected to reach 'completed' with structured inference output — no GPU/Triton
-needed. (BioGPT report generation is still not exercised here.)
+upload -> analyze -> results pipeline runs a real prediction *and* a real
+EigenCAM heatmap. The default stack uses the local ONNX Runtime (CPU) inference
+backend, so the analysis job reaches 'completed' with structured inference output
+and a heatmap served through the gateway — no GPU/Triton needed. (BioGPT report
+generation is still not exercised here.)
 """
 
 import time
@@ -92,3 +93,12 @@ def test_pipeline_upload_analyze_results(client: httpx.Client, auth_headers: dic
     assert results.get("model") == "skin_classification", results
     assert "num_detections" in results, results
     assert results.get("orig_size") == [1, 1], results  # 1x1 PNG fixture echoed back
+
+    # The EigenCAM heatmap must have been generated (gradcam_service read the
+    # uploaded study, computed the CAM, and wrote the PNG) and be retrievable
+    # through the gateway's static route — the full predict -> explain path on CPU.
+    heatmap_path = results.get("heatmap_path")
+    assert heatmap_path and heatmap_path.startswith("/data/heatmaps/"), results
+    hm = client.get(f"/static/heatmaps/{heatmap_path.rsplit('/', 1)[-1]}")
+    assert hm.status_code == 200, hm.text
+    assert hm.headers.get("content-type", "").startswith("image/"), dict(hm.headers)
