@@ -1,0 +1,29 @@
+# MedVision AI — GPU / Triton inference overlay
+#
+# Routes analysis inference to the NVIDIA Triton Inference Server (GPU) instead
+# of the default local ONNX Runtime (CPU) backend. The base stack stays CPU-only;
+# this overlay only flips the backend and wires the worker to Triton.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile triton up -d --wait
+#   (or: make up-gpu)
+#
+# Requirements: an NVIDIA GPU + the NVIDIA Container Toolkit on the host.
+# CPU-only (default) needs nothing extra:  docker compose up -d   (or: make up)
+
+services:
+  analysis_service:
+    environment:
+      INFERENCE_BACKEND: triton
+
+  analysis_worker:
+    environment:
+      INFERENCE_BACKEND: triton
+    # Wait for Triton to be ready before the worker starts pulling jobs.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      triton:
+        condition: service_healthy

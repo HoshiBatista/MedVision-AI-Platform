@@ -58,11 +58,25 @@ make train TASK=mri_segmentation
 make export TASK=mri_segmentation VERSION=1
 
 # 5. Start the full platform
-make up
+make up        # CPU inference (local ONNX Runtime) — no GPU required
+# or
+make up-gpu    # GPU inference via NVIDIA Triton (needs the NVIDIA Container Toolkit)
 
 # 6. Open the UI
 open http://localhost:3000
 ```
+
+### Inference backends
+
+Two interchangeable backends, selected by `INFERENCE_BACKEND`:
+
+| Variant | Command | Backend | Hardware |
+|---|---|---|---|
+| CPU (default) | `make up` | local ONNX Runtime in the analysis worker | any |
+| GPU | `make up-gpu` | NVIDIA Triton Inference Server (`--profile triton`) | NVIDIA GPU + Container Toolkit |
+
+Both serve the same exported ONNX models from `triton_models/<model>/1/`. The GPU
+variant layers `docker-compose.gpu.yml` on top of the base stack.
 
 ---
 

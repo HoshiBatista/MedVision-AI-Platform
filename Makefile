@@ -1,17 +1,20 @@
-.PHONY: help up down build logs ps shell restart \
-        up-monitoring up-triton up-all \
+.PHONY: help up up-cpu down build logs ps shell restart \
+        up-monitoring up-triton up-gpu up-all \
         lint test-integration e2e clean migrate makemigration
 
 DC      := docker compose
+# GPU/Triton variant: base stack + GPU overlay + triton profile, with inference
+# routed to Triton instead of the default local ONNX Runtime (CPU) backend.
+GPU_DC  := INFERENCE_BACKEND=triton $(DC) -f docker-compose.yml -f docker-compose.gpu.yml --profile triton
 SERVICE ?= auth_service
 
 help:
 	@echo "MedVision AI — dev commands"
 	@echo ""
-	@echo "  make up              Start core stack (postgres, redis, all services, gateway)"
+	@echo "  make up              Start core stack — CPU inference (local ONNX Runtime)"
+	@echo "  make up-gpu          Core stack — GPU inference via Triton (needs NVIDIA toolkit)"
 	@echo "  make up-monitoring   Core + Prometheus + Grafana"
-	@echo "  make up-triton       Core + Triton Inference Server"
-	@echo "  make up-all          Everything"
+	@echo "  make up-all          Everything (GPU/Triton + monitoring)"
 	@echo "  make down            Stop and remove containers"
 	@echo "  make build           Rebuild all images"
 	@echo "  make logs            Tail logs (SERVICE=<name> for one service)"
@@ -33,17 +36,24 @@ help:
 	@exit 1
 
 # ── Stack management ──────────────────────────────────────────────────────────
+# Default: CPU inference (local ONNX Runtime) — no GPU required.
 up: .env
 	$(DC) up -d --remove-orphans
+
+up-cpu: up   # alias
+
+# GPU inference via Triton Inference Server (requires an NVIDIA GPU + toolkit).
+up-gpu: .env
+	$(GPU_DC) up -d --remove-orphans
+
+# Back-compat alias for up-gpu.
+up-triton: up-gpu
 
 up-monitoring: .env
 	$(DC) --profile monitoring up -d --remove-orphans
 
-up-triton: .env
-	$(DC) --profile triton up -d --remove-orphans
-
 up-all: .env
-	$(DC) --profile triton --profile monitoring up -d --remove-orphans
+	$(GPU_DC) --profile monitoring up -d --remove-orphans
 
 down:
 	$(DC) down

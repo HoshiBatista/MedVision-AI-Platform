@@ -65,7 +65,9 @@ services:
   triton:
     <<: *service-defaults
     profiles: [triton]
-    image: nvcr.io/nvidia/tritonserver:24.09-py3-min
+    # Full image (not -py3-min): bundles the onnxruntime backend + GPU support
+    # needed to serve the exported YOLOv11 ONNX models.
+    image: nvcr.io/nvidia/tritonserver:24.09-py3
     command: >
       tritonserver
       --model-repository=/models
@@ -79,6 +81,16 @@ services:
       - "8010:8000"   # HTTP  (offset to avoid conflict with app services)
       - "8011:8001"   # gRPC
       - "8012:8002"   # metrics
+    # GPU reservation — this service is profile-gated ([triton]), so CPU-only
+    # hosts that never enable the profile are unaffected. Requires the NVIDIA
+    # Container Toolkit on the host.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/v2/health/ready || exit 1"]
       interval: 15s
