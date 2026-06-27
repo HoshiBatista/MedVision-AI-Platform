@@ -3,11 +3,9 @@ End-to-end smoke + contract tests against a live docker-compose stack.
 
 Covers the wiring that per-service unit tests cannot: JWT issued by auth_service
 is accepted by upload/analysis, the gateway routes correctly, and the
-upload -> analyze -> results pipeline runs a real prediction *and* a real
-EigenCAM heatmap. The default stack uses the local ONNX Runtime (CPU) inference
-backend, so the analysis job reaches 'completed' with structured inference output
-and a heatmap served through the gateway — no GPU/Triton needed. (BioGPT report
-generation is still not exercised here.)
+full happy-path runs for real on CPU: upload -> prediction (local ONNX Runtime)
+-> EigenCAM heatmap (served through the gateway) -> BioGPT clinical report. No
+GPU/Triton needed.
 """
 
 import time
@@ -18,6 +16,28 @@ from conftest import DIRECT_HOST, PNG_1X1, SERVICE_PORTS
 
 TERMINAL = {"completed", "failed"}
 RESULT_TIMEOUT = 120
+# BioGPT loads lazily in the background at startup (the container is "healthy"
+# before the model is ready), and a fresh CI run re-downloads the weights, so the
+# readiness wait is generous; CPU generation of one report is then bounded too.
+REPORT_READY_TIMEOUT = 600
+REPORT_GEN_TIMEOUT = 240
+
+
+def _wait_report_model_ready() -> None:
+    """Block until report_service reports its BioGPT model is loaded."""
+    url = f"http://{DIRECT_HOST}:{SERVICE_PORTS['report_service']}/ready"
+    deadline = time.time() + REPORT_READY_TIMEOUT
+    last: str | None = None
+    while time.time() < deadline:
+        try:
+            r = httpx.get(url, timeout=10)
+            if r.status_code == 200 and r.json().get("checks", {}).get("model"):
+                return
+            last = r.text
+        except Exception as exc:  # noqa: BLE001
+            last = str(exc)
+        time.sleep(5)
+    pytest.fail(f"BioGPT not ready within {REPORT_READY_TIMEOUT}s (last: {last})")
 
 
 def test_gateway_health(client: httpx.Client):
@@ -92,7 +112,7 @@ def test_pipeline_upload_analyze_results(client: httpx.Client, auth_headers: dic
     results = body.get("results") or {}
     assert results.get("model") == "skin_classification", results
     assert "num_detections" in results, results
-    assert results.get("orig_size") == [1, 1], results  # 1x1 PNG fixture echoed back
+    assert results.get("orig_size") == [8, 8], results  # 8x8 PNG fixture echoed back
 
     # The EigenCAM heatmap must have been generated (gradcam_service read the
     # uploaded study, computed the CAM, and wrote the PNG) and be retrievable
@@ -102,3 +122,41 @@ def test_pipeline_upload_analyze_results(client: httpx.Client, auth_headers: dic
     hm = client.get(f"/static/heatmaps/{heatmap_path.rsplit('/', 1)[-1]}")
     assert hm.status_code == 200, hm.text
     assert hm.headers.get("content-type", "").startswith("image/"), dict(hm.headers)
+
+    # 4. Generate a BioGPT clinical report from the findings (CPU). The model
+    #    loads lazily, so wait for report_service to report it ready first.
+    _wait_report_model_ready()
+    gen = client.post(
+        "/api/v1/reports/generate",
+        json={
+            "study_id": study_id,
+            "modality": "DERM",
+            "job_ids": [job_id],
+            "findings": {
+                "confidence": results.get("top_confidence"),
+                "bbox_count": results.get("num_detections"),
+                "labels": ["lesion"],
+                "raw": {"model": results.get("model")},
+            },
+            "patient_context": {"clinical_indication": "e2e smoke test"},
+        },
+        headers=auth_headers,
+    )
+    assert gen.status_code == 202, gen.text
+    report_id = gen.json()["report_id"]
+    assert report_id
+
+    # 5. Poll until BioGPT finishes generating the report.
+    deadline = time.time() + REPORT_GEN_TIMEOUT
+    rbody: dict = {}
+    while time.time() < deadline:
+        rr = client.get(f"/api/v1/reports/{report_id}", headers=auth_headers)
+        assert rr.status_code == 200, rr.text
+        rbody = rr.json()
+        if rbody["status"] in TERMINAL:
+            break
+        time.sleep(3)
+
+    assert rbody.get("status") == "completed", f"report generation failed: {rbody}"
+    assert rbody.get("content"), rbody
+    assert "DISCLAIMER" in rbody["content"], rbody["content"][:500]
