@@ -251,6 +251,7 @@ services:
     environment:
       DATABASE_URL:       postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       AUTO_CREATE_TABLES: "false"
+      HF_HOME:            /data/hf_cache
       LLM_MODEL_NAME:     ${LLM_MODEL_NAME:-microsoft/biogpt}
       LLM_MAX_NEW_TOKENS: "512"
       LLM_DEVICE:         auto
@@ -259,7 +260,7 @@ services:
     ports:
       - "8005:8005"
     volumes:
-      - hf_cache:/root/.cache/huggingface
+      - hf_cache:/data/hf_cache
     depends_on:
       postgres:
         condition: service_healthy

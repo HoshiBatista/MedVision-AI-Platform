@@ -77,7 +77,7 @@
 ### Tier 2 — продакшн-готовность
 - [ ] **OpenTelemetry / Jaeger** — спаны на вызовы Triton и запросы к БД (сейчас только Prometheus)
 - [ ] **Helm-чарты / K8s** — `infra/helm` и `infra/terraform` пустые
-- [ ] **Хардненинг контейнеров** — non-root user, HEALTHCHECK, multi-stage для python-сервисов, pinned base digests
+- [x] **Хардненинг контейнеров** — 5 python-сервисов: multi-stage (venv, компиляторы только в builder), non-root `appuser` (uid 10001, единый для прав на shared-volume'ы), HEALTHCHECK (python urllib), runtime-либы по минимуму (analysis без libpq — psycopg2-binary бандлит; gradcam/report + libgomp1). Все базовые образы (python/node/nginx) запинены по `@sha256`. report: HF-кэш → `/data/hf_cache` (writable non-root). _Остаётся: non-root для nginx (gateway/frontend) — нужен unprivileged-образ + смена порта_
 - [ ] **Auth** — refresh-токены, сброс пароля, rate-limiting на gateway
 - [x] **Запинены зависимости во всех сервисах** — `analysis_service` переведён с `>=` на `==` (был единственным с дрейфом; остальные 4 уже на `==`). Версии выровнены на остальной проект; `tritonclient==2.54.0`+`numpy==1.26.4` (как gradcam/ml). `ml/` (тренировка) — отдельно, torch там намеренно гибкий под локальный CUDA
 
