@@ -12,7 +12,9 @@ class Settings(BaseSettings):
 
     storage_root: str = "/data/studies"
 
-    session_cookie_name: str = "medvision_session"
+    # JWT (must match auth_service's secret/algorithm to validate Bearer tokens)
+    jwt_secret_key: str = "change-me-in-production-use-a-long-random-secret"
+    jwt_algorithm: str = "HS256"
 
     triton_http_url: str = "triton:8000"
     gradcam_service_url: str = "http://gradcam_service:8004"

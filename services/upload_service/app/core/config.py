@@ -10,8 +10,9 @@ class Settings(BaseSettings):
     # Local filesystem storage root (mounted volume in Docker)
     storage_root: str = "/data/studies"
 
-    # Session (shared with auth_service — same Redis keys)
-    session_cookie_name: str = "medvision_session"
+    # JWT (must match auth_service's secret/algorithm to validate Bearer tokens)
+    jwt_secret_key: str = "change-me-in-production-use-a-long-random-secret"
+    jwt_algorithm: str = "HS256"
 
     max_upload_size_mb: int = 512
 

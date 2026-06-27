@@ -57,6 +57,8 @@
 4. [x] `analysis`: незапиненный FastAPI (0.137) ломал Prometheus-инструментатор → пин `fastapi==0.115.5`
 5. [x] `analysis`: `JobResultResponse.job_id` не маппился на `id` → 500 на `/results` (alias)
 6. [x] `report`: `ReportResponse.report_id` не маппился на `id` → 500 на `/reports` (alias)
+7. [x] `gateway↔upload`: роутер монтировался на `/api/v1/studies/`, а gateway/фронт ходят на `/api/v1/upload` → 404; выровнено на `/api/v1/upload`
+8. [x] **JWT не сквозной** (нашёл e2e): `auth` выдаёт JWT, а `upload`/`analysis` ждали несуществующую Redis-сессию → любой upload/analyze = 401. Переведены на тот же Bearer JWT (общий `JWT_SECRET_KEY`)
 
 ---
 
@@ -65,8 +67,8 @@
 ### Tier 1 — критично
 - [x] **Дотестирован celery-воркер** `analysis_service/app/workers/tasks.py` (7 тестов, мок Triton+gradcam, реальный SQLite через `SyncSessionFactory`); `tasks.py` 0→100% покрытия
 - [x] **Alembic-миграции** — initial-ревизии для всех 4 DB-сервисов (auth/upload/analysis/report), async `env.py`, URL/metadata из настроек. `create_tables()` теперь под флагом `auto_create_tables` (default True для dev/тестов); в compose сервисы запускают `alembic upgrade head` перед uvicorn, `AUTO_CREATE_TABLES=false`. Makefile: `make migrate` / `make makemigration`
-- [ ] **e2e** `tests/e2e` по docker-compose (заглушки 0 строк)
-- [ ] **Объектное хранилище (MinIO/S3)** — заменить локальную ФС; presigned-URL вместо путей
+- [x] **e2e по docker-compose** — `tests/e2e` (smoke+контракт через gateway): health всех сервисов, JWT-флоу login→upload→analyze→results до терминального статуса. CI-job `e2e` (поднимает стек, без Triton/BioGPT) + `make e2e`. Реальный ML не гоняется (job штатно завершается `failed` без Triton)
+- [x] ~~Объектное хранилище (MinIO/S3)~~ — **решено не делать**: локальная ФС (`/data/studies`, `/data/heatmaps`) остаётся постоянным дизайном, не временным
 
 ### Tier 2 — продакшн-готовность
 - [ ] **OpenTelemetry / Jaeger** — спаны на вызовы Triton и запросы к БД (сейчас только Prometheus)
@@ -88,9 +90,10 @@
 ---
 
 ## 🐞 Известные проблемы (зафиксировать/проверить)
-- [ ] **Несоответствие путей gateway↔upload**: gateway и фронт ходят на `/api/v1/upload`,
-  но `upload_service` монтирует роутер на `/api/v1/studies/`. Проверить nginx-rewrite или выровнять префикс.
-- [ ] `tests/integration` и `tests/e2e` на верхнем уровне — заглушки (0 строк), не запускаются в CI (тесты теперь пер-сервисные в `services/<svc>/tests/`).
+- [x] ~~Несоответствие путей gateway↔upload~~ — выровнено на `/api/v1/upload` (см. баг #7).
+- [x] ~~JWT не сквозной в upload/analysis~~ — исправлено (см. баг #8).
+- [ ] `tests/integration` (верхний уровень) — всё ещё заглушки (0 строк). `tests/e2e` реализован (CI-job `e2e`).
+- [ ] **e2e-job не в обязательном гейте** `ci-success` — добавлен как отдельный job (тяжёлый: билдит весь стек, включая torch в report); включить в гейт после первого зелёного прогона.
 - [ ] mypy в CI — advisory (strict не проходит); довести типизацию и сделать блокирующим.
 
 ---
@@ -118,7 +121,7 @@ CI: всё в `.github/workflows/ci.yml`. Чтобы добавить новый
 ---
 
 ## Рекомендуемый следующий шаг
-Celery-воркер и Alembic-миграции — сделаны. Дальше из Tier 1 остаётся **объектное хранилище (MinIO/S3)**
-и **e2e по docker-compose**; параллельно из Tier 2 — **запинить зависимости во всех сервисах** (дрейф уже ловили).
+Celery-воркер и Alembic-миграции — сделаны; объектное хранилище решено не делать (локальная ФС — постоянный дизайн).
+Текущая задача — **e2e по docker-compose** (`tests/e2e`); параллельно из Tier 2 — **запинить зависимости во всех сервисах**.
 Перед мержем стоит один раз поднять стек (`make up`) и убедиться, что `alembic upgrade head` проходит на Postgres
 (локально миграции верифицированы на SQLite: `upgrade head` ок для всех 4 сервисов).

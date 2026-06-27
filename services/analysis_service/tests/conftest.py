@@ -1,7 +1,7 @@
 """
 Test fixtures for analysis_service.
 
-Runs the app on a throwaway SQLite DB, overrides the Redis-session auth, and
+Runs the app on a throwaway SQLite DB, overrides the JWT auth dependency, and
 stubs Celery dispatch so the analyze endpoint never touches a real broker.
 """
 

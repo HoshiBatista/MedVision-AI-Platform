@@ -2,9 +2,15 @@ from collections.abc import AsyncGenerator
 
 from app.core.config import settings
 from app.core.database import AsyncSessionFactory
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Bearer token issued by auth_service (JWT, HS256). The same JWT_SECRET_KEY must
+# be shared across services so tokens validate here.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -20,15 +26,18 @@ async def get_redis() -> AsyncGenerator[Redis, None]:
         await client.aclose()
 
 
-async def get_current_user_id(
-    medvision_session: str | None = Cookie(default=None, alias=settings.session_cookie_name),
-    redis: Redis = Depends(get_redis),
-) -> int:
-    if not medvision_session:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        raise credentials_exception from None
 
-    value = await redis.get(f"session:{medvision_session}")
-    if value is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or invalid")
-
-    return int(value)
+    sub = payload.get("sub")
+    if sub is None:
+        raise credentials_exception
+    return int(sub)

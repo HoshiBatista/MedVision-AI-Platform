@@ -128,6 +128,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       AUTO_CREATE_TABLES: "false"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-change-in-prod}
+      JWT_ALGORITHM:  ${JWT_ALGORITHM:-HS256}
       STORAGE_ROOT: /data/studies
       ENVIRONMENT:  ${ENVIRONMENT:-development}
       LOG_LEVEL:    ${LOG_LEVEL:-INFO}
@@ -157,6 +159,8 @@ services:
       DATABASE_URL:         postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       SYNC_DATABASE_URL:    postgresql+psycopg2://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       AUTO_CREATE_TABLES:   "false"
+      JWT_SECRET_KEY:       ${JWT_SECRET_KEY:-dev-secret-change-in-prod}
+      JWT_ALGORITHM:        ${JWT_ALGORITHM:-HS256}
       REDIS_URL:            redis://redis:6379/0
       CELERY_BROKER_URL:    redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2

@@ -261,6 +261,32 @@ jobs:
           docker compose -f docker-compose.yml config > /dev/null
           echo "docker-compose.yml is valid" >> "$GITHUB_STEP_SUMMARY"
 
+  e2e:
+    name: e2e (docker compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: Build and start stack
+        run: docker compose up -d --build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install e2e test deps
+        run: pip install pytest httpx
+      - name: Run e2e suite
+        env:
+          E2E_BASE_URL: http://localhost
+          E2E_READY_TIMEOUT: "360"
+        run: pytest tests/e2e -v
+      - name: Compose logs
+        if: always()
+        run: docker compose logs --no-color --tail=300 || true
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
   # ──────────────────────── Security / Hygiene ───────────────────────────────
   codeql:
     name: CodeQL · ${{ matrix.language }}

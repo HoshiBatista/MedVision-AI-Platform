@@ -1,6 +1,6 @@
 .PHONY: help up down build logs ps shell restart \
         up-monitoring up-triton up-all \
-        lint test-integration clean migrate makemigration
+        lint test-integration e2e clean migrate makemigration
 
 DC      := docker compose
 SERVICE ?= auth_service
@@ -22,6 +22,7 @@ help:
 	@echo "  make migrate         Apply Alembic migrations (all DB services)"
 	@echo "  make makemigration   Autogenerate a revision (SERVICE=<svc> MSG=\"...\")"
 	@echo "  make test-integration Run integration tests"
+	@echo "  make e2e             Bring up the stack and run e2e tests (then tear down)"
 	@echo "  make clean           Remove volumes (DATA LOSS)"
 
 # ── Ensure .env exists ────────────────────────────────────────────────────────
@@ -73,6 +74,16 @@ lint:
 test-integration:
 	$(DC) run --rm --no-deps -e ENVIRONMENT=test auth_service \
 	  sh -c "pip install pytest httpx -q && pytest /app/tests/integration/ -v"
+
+# Full-stack e2e: build + start the core stack (no triton/monitoring profiles),
+# run the e2e suite against the gateway, then tear everything down.
+# Requires pytest + httpx on the host (pip install pytest httpx).
+e2e: .env
+	$(DC) up -d --build
+	@pytest tests/e2e -v; rc=$$?; \
+	  $(DC) logs --no-color --tail=200 > e2e-compose.log 2>&1 || true; \
+	  $(DC) down -v; \
+	  exit $$rc
 
 # ── Database migrations (Alembic) ─────────────────────────────────────────────
 # On `make up` each DB service runs `alembic upgrade head` before its app starts;

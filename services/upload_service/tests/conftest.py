@@ -2,7 +2,7 @@
 Test fixtures for upload_service.
 
 Runs the app on a throwaway SQLite DB and a temp storage root, and overrides
-the Redis-session auth dependency so endpoints can be exercised without Redis.
+the JWT auth dependency so endpoints can be exercised without a real token.
 """
 
 import asyncio
