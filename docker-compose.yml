@@ -18,6 +18,9 @@ x-restart: &restart
 x-service-defaults: &service-defaults
   <<: *restart
   logging: *default-logging
+  # Prevent privilege escalation via setuid binaries across all services.
+  security_opt:
+    - no-new-privileges:true
   networks:
     - backend
 
