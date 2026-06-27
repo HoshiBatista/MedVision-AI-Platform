@@ -110,11 +110,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install service + test deps
         run: |
-          # torch/transformers/accelerate are stubbed in report_service tests —
-          # skip the heavy ML wheels (no-op for the other services).
-          grep -ivE '^(torch|transformers|accelerate)' \
-            services/${{ matrix.service }}/requirements.txt > /tmp/req.txt
-          pip install -r /tmp/req.txt
+          pip install -r services/${{ matrix.service }}/requirements.txt
           pip install pytest pytest-asyncio pytest-cov httpx aiosqlite
       - name: Run ${{ matrix.service }} tests
         working-directory: services/${{ matrix.service }}
@@ -264,6 +260,10 @@ jobs:
   e2e:
     name: e2e (docker compose)
     runs-on: ubuntu-latest
+    env:
+      # Tiny instruct model for the report step — fast to pull and run on CPU.
+      # Production/GPU uses the OpenBioLLM-8B default from .env.example.
+      LLM_MODEL_NAME: "qwen2.5:0.5b"
     steps:
       - uses: actions/checkout@v4
       - name: Prepare env

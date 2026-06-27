@@ -4,9 +4,7 @@ sqlalchemy[asyncio]==2.0.36
 alembic==1.14.0
 asyncpg==0.30.0
 pydantic-settings==2.6.1
-torch==2.5.1
-transformers==4.46.3
-accelerate==1.2.1
+httpx==0.28.1  # async client to the Ollama server
 jinja2==3.1.4
 structlog==24.4.0
 prometheus-fastapi-instrumentator==7.0.0

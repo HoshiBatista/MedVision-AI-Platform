@@ -6,14 +6,17 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://medvision:medvision@postgres:5432/medvision"
 
-    # BioGPT model — swap to "microsoft/BioGPT-Large" for better quality
-    llm_model_name: str = "microsoft/biogpt"
+    # Report LLM served by a local Ollama instance (on-prem, no external API).
+    ollama_url: str = "http://ollama:11434"
+    # Default: OpenBioLLM-8B (Q8_0 GGUF) pulled from Hugging Face. Override with any
+    # Ollama model tag — e.g. a tiny one for CPU/CI (LLM_MODEL_NAME=qwen2.5:0.5b).
+    llm_model_name: str = "hf.co/mradermacher/Llama3-OpenBioLLM-8B-GGUF:Q8_0"
     llm_max_new_tokens: int = 512
     llm_temperature: float = 0.4
     llm_top_k: int = 50
     llm_top_p: float = 0.92
-    # "auto" → picks MPS on Apple Silicon, then CUDA, then CPU
-    llm_device: str = "auto"
+    llm_request_timeout: float = 300.0  # one generation call
+    llm_pull_timeout: float = 3600.0    # first-run weight download
 
     environment: str = "development"
     log_level: str = "INFO"

@@ -1,9 +1,8 @@
 """
 Test fixtures for report_service.
 
-torch/transformers are stubbed in sys.modules so importing the app never pulls
-the heavy ML stack or downloads BioGPT — the generator itself is mocked. Runs
-on a throwaway SQLite DB.
+The generator is a thin Ollama HTTP client; tests mock it so no Ollama server or
+model download is needed. Runs on a throwaway SQLite DB.
 """
 
 import asyncio
@@ -11,24 +10,11 @@ import contextlib
 import os
 import sys
 import tempfile
-import types
 from collections.abc import Iterator
 
 _SERVICE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SERVICE_ROOT not in sys.path:
     sys.path.insert(0, _SERVICE_ROOT)
-
-# ── Stub the heavy ML deps before any app import ──────────────────────────────
-_torch = types.ModuleType("torch")
-_torch.backends = types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False))
-_torch.cuda = types.SimpleNamespace(is_available=lambda: False)
-sys.modules.setdefault("torch", _torch)
-
-_tf = types.ModuleType("transformers")
-_tf.BioGptForCausalLM = object
-_tf.BioGptTokenizer = object
-_tf.pipeline = lambda *a, **k: None
-sys.modules.setdefault("transformers", _tf)
 
 _DB_FD, _DB_PATH = tempfile.mkstemp(suffix=".db", prefix="report_test_")
 os.close(_DB_FD)
@@ -59,7 +45,10 @@ def client(monkeypatch) -> Iterator[TestClient]:
     async def _fake_generate(prompt: str) -> str:
         return f"{prompt[:20]} {FAKE_CONTENT}"
 
-    monkeypatch.setattr(report_generator, "load", lambda: None)
+    async def _noop_ensure() -> None:
+        return None
+
+    monkeypatch.setattr(report_generator, "ensure_model", _noop_ensure)
     monkeypatch.setattr(report_generator, "is_ready", lambda: True)
     monkeypatch.setattr(report_generator, "generate", _fake_generate)
 

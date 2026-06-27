@@ -36,17 +36,16 @@ app.include_router(api_v1_router, prefix="/api/v1")
 async def startup() -> None:
     if settings.auto_create_tables:
         await create_tables()
-    # Load BioGPT in a background thread so HTTP server starts immediately.
-    # /ready returns model=false until loading finishes.
+    # Pull the model into Ollama in the background so the HTTP server is available
+    # immediately. /ready returns model=false until the pull finishes.
     import asyncio
 
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, report_generator.load)
+    asyncio.create_task(report_generator.ensure_model())
 
     logger.info(
         "report_service started",
         model=settings.llm_model_name,
-        device=settings.llm_device,
+        ollama_url=settings.ollama_url,
         environment=settings.environment,
     )
 

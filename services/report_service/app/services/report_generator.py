@@ -1,105 +1,94 @@
-import asyncio
-import re
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
+"""
+Clinical report generation via a local Ollama server.
 
+report_service stays a thin client: it builds the prompt (Jinja templates,
+see prompt_builder) and delegates text generation to an Ollama instance running a
+quantised medical LLM (default OpenBioLLM-8B Q8). No model weights, torch, or
+transformers live in this service. A fixed AI-assistance disclaimer is always
+appended. No external/cloud LLM API is called.
+"""
+
+import re
+
+import httpx
 import structlog
-import torch
+
 from app.core.config import settings
-from transformers import BioGptForCausalLM, BioGptTokenizer, pipeline
 
 logger = structlog.get_logger()
 
 _DISCLAIMER = (
-    "\n\nDISCLAIMER: This report was generated with AI assistance (BioGPT) "
-    "based on automated image analysis. It must be reviewed and validated by a "
-    "qualified radiologist or clinician before clinical use."
+    "\n\nDISCLAIMER: This report was generated with AI assistance based on "
+    "automated image analysis. It must be reviewed and validated by a qualified "
+    "radiologist or clinician before clinical use."
 )
 
 
-def _resolve_device() -> str:
-    if settings.llm_device != "auto":
-        return settings.llm_device
-    if torch.backends.mps.is_available():
-        return "mps"
-    if torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
-
-
 class ReportGenerator:
+    """Thin async client over the Ollama HTTP API."""
+
     def __init__(self) -> None:
-        self._pipeline = None
-        self._executor = ThreadPoolExecutor(max_workers=1)
-        self._device: str = _resolve_device()
+        self._ready = False
+        self._model = settings.llm_model_name
+        self._base = settings.ollama_url.rstrip("/")
 
-    def load(self) -> None:
-        logger.info(
-            "loading BioGPT model",
-            model=settings.llm_model_name,
-            device=self._device,
-        )
-        tokenizer = BioGptTokenizer.from_pretrained(settings.llm_model_name)
-        model = BioGptForCausalLM.from_pretrained(settings.llm_model_name)
-
-        # MPS and CPU run float32; CUDA can use float16 for speed
-        if self._device == "cuda":
-            model = model.half()
-
-        device_index = -1 if self._device == "cpu" else (0 if self._device in ("cuda", "mps") else -1)
-
-        self._pipeline = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            device=device_index if self._device != "mps" else "mps",
-        )
-        logger.info("BioGPT model loaded", device=self._device)
-
-    def _generate_sync(self, prompt: str) -> str:
-        assert self._pipeline is not None, "Model not loaded"
-
-        outputs = self._pipeline(
-            prompt,
-            max_new_tokens=settings.llm_max_new_tokens,
-            do_sample=True,
-            temperature=settings.llm_temperature,
-            top_k=settings.llm_top_k,
-            top_p=settings.llm_top_p,
-            repetition_penalty=1.3,
-            pad_token_id=self._pipeline.tokenizer.eos_token_id,
-            return_full_text=True,
-        )
-        generated: str = outputs[0]["generated_text"]
-
-        # Strip the prompt prefix, keep only the generated continuation
-        if generated.startswith(prompt):
-            generated = generated[len(prompt):]
-
-        return _post_process(prompt, generated)
-
-    async def generate(self, prompt: str) -> str:
-        loop = asyncio.get_running_loop()
-        fn = partial(self._generate_sync, prompt)
-        return await loop.run_in_executor(self._executor, fn)
+    async def ensure_model(self) -> None:
+        """
+        Pull the configured model into Ollama (idempotent — returns quickly if the
+        weights are already cached). Flips the readiness flag on success. Called as
+        a background task at startup so the HTTP server is available immediately.
+        """
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._base, timeout=settings.llm_pull_timeout
+            ) as client:
+                logger.info("ensuring ollama model", model=self._model)
+                resp = await client.post(
+                    "/api/pull", json={"name": self._model, "stream": False}
+                )
+                resp.raise_for_status()
+            self._ready = True
+            logger.info("ollama model ready", model=self._model)
+        except Exception as exc:  # noqa: BLE001
+            self._ready = False
+            logger.error("ollama model unavailable", model=self._model, error=str(exc))
 
     def is_ready(self) -> bool:
-        return self._pipeline is not None
+        return self._ready
+
+    async def generate(self, prompt: str) -> str:
+        async with httpx.AsyncClient(
+            base_url=self._base, timeout=settings.llm_request_timeout
+        ) as client:
+            resp = await client.post(
+                "/api/generate",
+                json={
+                    "model": self._model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": settings.llm_temperature,
+                        "top_k": settings.llm_top_k,
+                        "top_p": settings.llm_top_p,
+                        "num_predict": settings.llm_max_new_tokens,
+                        "repeat_penalty": 1.3,
+                    },
+                },
+            )
+            resp.raise_for_status()
+            generated: str = resp.json().get("response", "")
+        return _post_process(generated)
 
 
-def _post_process(prompt: str, generated: str) -> str:
-    # Trim trailing incomplete sentence
-    last_period = max(generated.rfind("."), generated.rfind("!"), generated.rfind("?"))
-    if last_period > 0:
-        generated = generated[: last_period + 1]
+def _post_process(generated: str) -> str:
+    text = re.sub(r"\s+", " ", generated).strip()
 
-    # Remove repeated whitespace
-    generated = re.sub(r"\s+", " ", generated).strip()
+    # Trim a trailing incomplete sentence.
+    last_terminal = max(text.rfind("."), text.rfind("!"), text.rfind("?"))
+    if last_terminal > 0:
+        text = text[: last_terminal + 1]
 
-    # Reconstruct as structured report
-    # The prompt already contains structured context; generated is the continuation
-    full_text = f"{prompt.strip()} {generated}"
-    return full_text + _DISCLAIMER
+    return text + _DISCLAIMER
 
 
 # Module-level singleton

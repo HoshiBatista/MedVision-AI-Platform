@@ -27,3 +27,13 @@ services:
         condition: service_healthy
       triton:
         condition: service_healthy
+
+  # Run the report LLM on the GPU (same model weights as the CPU default).
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
