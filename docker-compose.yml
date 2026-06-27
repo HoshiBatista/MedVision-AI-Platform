@@ -195,6 +195,10 @@ services:
       celery -A app.workers.celery_app.celery worker
       -Q analysis -c 2 -l info
       --without-gossip --without-mingle
+    # The image HEALTHCHECK probes the HTTP /health endpoint; the worker is not
+    # an HTTP service, so disable it here (liveness is covered by restart policy).
+    healthcheck:
+      disable: true
     env_file: .env
     environment:
       DATABASE_URL:          postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
