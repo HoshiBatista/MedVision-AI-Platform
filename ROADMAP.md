@@ -59,6 +59,9 @@
 6. [x] `report`: `ReportResponse.report_id` не маппился на `id` → 500 на `/reports` (alias)
 7. [x] `gateway↔upload`: роутер монтировался на `/api/v1/studies/`, а gateway/фронт ходят на `/api/v1/upload` → 404; выровнено на `/api/v1/upload`
 8. [x] **JWT не сквозной** (нашёл e2e): `auth` выдаёт JWT, а `upload`/`analysis` ждали несуществующую Redis-сессию → любой upload/analyze = 401. Переведены на тот же Bearer JWT (общий `JWT_SECRET_KEY`)
+9. [x] **Healthcheck'и битые** (нашёл первый прогон стека): `curl` нет в python-образах → сервисы вечно `unhealthy`. Переведены на `python urllib`
+10. [x] **Гейтвей-гонка на старте**: nginx резолвит все upstream'ы при старте и крэш-лупит, если бэкенд ещё не поднялся → `:80` не открывался. Gateway завязан на `service_healthy` бэкендов; e2e-job поднимает стек через `up --wait` с дампом логов при фейле
+11. [x] **alembic.ini под 1.14.0**: ключ `path_separator` (alembic ≥1.16) → `version_path_separator`; миграции проверены на запиненной 1.14.0
 
 ---
 
@@ -75,7 +78,7 @@
 - [ ] **Helm-чарты / K8s** — `infra/helm` и `infra/terraform` пустые
 - [ ] **Хардненинг контейнеров** — non-root user, HEALTHCHECK, multi-stage для python-сервисов, pinned base digests
 - [ ] **Auth** — refresh-токены, сброс пароля, rate-limiting на gateway
-- [ ] **Запинить зависимости во всех сервисах** (analysis уже частично) — `>=` приводит к дрейфу версий (см. баг #4)
+- [x] **Запинены зависимости во всех сервисах** — `analysis_service` переведён с `>=` на `==` (был единственным с дрейфом; остальные 4 уже на `==`). Версии выровнены на остальной проект; `tritonclient==2.54.0`+`numpy==1.26.4` (как gradcam/ml). `ml/` (тренировка) — отдельно, torch там намеренно гибкий под локальный CUDA
 
 ### Tier 3 — функционал / UX
 - [ ] **Admin/Users UI** — был в старом фронте, при переписывании на React не перенесён (нет `api/admin.ts` и страницы)

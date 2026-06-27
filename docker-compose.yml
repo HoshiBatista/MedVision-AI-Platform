@@ -111,7 +111,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -141,7 +141,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8002/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -179,7 +179,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8003/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -234,7 +234,7 @@ services:
       - ./triton_models:/models:ro
       - heatmap_data:/data/heatmaps
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8004/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -264,7 +264,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8005/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health', timeout=3)"]
       interval: 20s
       timeout: 5s
       retries: 6
@@ -290,13 +290,21 @@ services:
     volumes:
       - study_data:/data/studies:ro
       - heatmap_data:/data/heatmaps:ro
+    # Wait for backends to be healthy before starting nginx — it resolves all
+    # upstreams at boot and crash-loops if any host is not yet up.
     depends_on:
-      - frontend
-      - auth_service
-      - upload_service
-      - analysis_service
-      - gradcam_service
-      - report_service
+      frontend:
+        condition: service_started
+      auth_service:
+        condition: service_healthy
+      upload_service:
+        condition: service_healthy
+      analysis_service:
+        condition: service_healthy
+      gradcam_service:
+        condition: service_healthy
+      report_service:
+        condition: service_healthy
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Observability (enable with: docker compose --profile monitoring up)
