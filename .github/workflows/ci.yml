@@ -349,6 +349,7 @@ jobs:
       - hadolint
       - docker-build
       - compose-validate
+      - e2e
       - repo-hygiene
     steps:
       - name: Check required job results
