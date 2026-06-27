@@ -4,8 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Root of the Triton model repository; ONNX files are at
-    # {model_repo_root}/{model_name}/1/model.onnx
+    # Root of the Triton model repository; the ONNX file is at
+    # {model_repo_root}/{model_name}/1/*.onnx (named after the export)
     model_repo_root: str = "/models"
 
     # Where generated heatmap PNGs are written

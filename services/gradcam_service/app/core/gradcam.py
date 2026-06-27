@@ -119,10 +119,13 @@ def _build_session(model_path: Path) -> _CachedModel:
 def _get_model(model_name: str) -> _CachedModel:
     with _cache_lock:
         if model_name not in _cache:
-            model_path = Path(settings.model_repo_root) / model_name / "1" / "model.onnx"
-            if not model_path.exists():
-                raise FileNotFoundError(f"ONNX model not found: {model_path}")
-            _cache[model_name] = _build_session(model_path)
+            # Triton-style repo layout: <root>/<model>/1/*.onnx — the file is named
+            # after the export (e.g. skin_classification.onnx), not "model.onnx".
+            model_dir = Path(settings.model_repo_root) / model_name / "1"
+            onnx_files = sorted(model_dir.glob("*.onnx")) if model_dir.is_dir() else []
+            if not onnx_files:
+                raise FileNotFoundError(f"ONNX model not found under: {model_dir}")
+            _cache[model_name] = _build_session(onnx_files[0])
         return _cache[model_name]
 
 
