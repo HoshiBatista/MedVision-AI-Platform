@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
     docs_enabled: bool = True
+    # When False, the app does not auto-create tables on startup (Alembic owns the schema).
+    auto_create_tables: bool = True
 
 
 settings = Settings()

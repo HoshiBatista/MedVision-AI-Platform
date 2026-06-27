@@ -34,7 +34,8 @@ app.include_router(api_v1_router, prefix="/api/v1")
 
 @app.on_event("startup")
 async def startup() -> None:
-    await create_tables()
+    if settings.auto_create_tables:
+        await create_tables()
     # Load BioGPT in a background thread so HTTP server starts immediately.
     # /ready returns model=false until loading finishes.
     import asyncio

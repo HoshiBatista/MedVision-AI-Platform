@@ -92,9 +92,11 @@ services:
       context: services/auth_service
       dockerfile: Dockerfile
     image: medvision/auth_service:dev
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8001"]
     env_file: .env
     environment:
       DATABASE_URL:               postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      AUTO_CREATE_TABLES:         "false"
       JWT_SECRET_KEY:             ${JWT_SECRET_KEY:-dev-secret-change-in-prod}
       JWT_ALGORITHM:              ${JWT_ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
@@ -121,9 +123,11 @@ services:
       context: services/upload_service
       dockerfile: Dockerfile
     image: medvision/upload_service:dev
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8002"]
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      AUTO_CREATE_TABLES: "false"
       STORAGE_ROOT: /data/studies
       ENVIRONMENT:  ${ENVIRONMENT:-development}
       LOG_LEVEL:    ${LOG_LEVEL:-INFO}
@@ -147,11 +151,12 @@ services:
       context: services/analysis_service
       dockerfile: Dockerfile
     image: medvision/analysis_service:dev
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8003"]
     env_file: .env
     environment:
       DATABASE_URL:         postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       SYNC_DATABASE_URL:    postgresql+psycopg2://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      AUTO_CREATE_TABLES:   "false"
       REDIS_URL:            redis://redis:6379/0
       CELERY_BROKER_URL:    redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -237,9 +242,11 @@ services:
       context: services/report_service
       dockerfile: Dockerfile
     image: medvision/report_service:dev
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8005"]
     env_file: .env
     environment:
       DATABASE_URL:       postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
+      AUTO_CREATE_TABLES: "false"
       LLM_MODEL_NAME:     ${LLM_MODEL_NAME:-microsoft/biogpt}
       LLM_MAX_NEW_TOKENS: "512"
       LLM_DEVICE:         auto

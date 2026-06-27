@@ -63,8 +63,9 @@
 ## ⏳ План развития (по приоритету)
 
 ### Tier 1 — критично
-- [ ] **Дотестировать**: celery-воркер `analysis_service/app/workers/tasks.py` (мок Triton+gradcam+DB), e2e `tests/e2e` по docker-compose
-- [ ] **Alembic-миграции** — сейчас схема создаётся через `create_tables()` ad-hoc; нужны версионируемые миграции для всех сервисов
+- [x] **Дотестирован celery-воркер** `analysis_service/app/workers/tasks.py` (7 тестов, мок Triton+gradcam, реальный SQLite через `SyncSessionFactory`); `tasks.py` 0→100% покрытия
+- [x] **Alembic-миграции** — initial-ревизии для всех 4 DB-сервисов (auth/upload/analysis/report), async `env.py`, URL/metadata из настроек. `create_tables()` теперь под флагом `auto_create_tables` (default True для dev/тестов); в compose сервисы запускают `alembic upgrade head` перед uvicorn, `AUTO_CREATE_TABLES=false`. Makefile: `make migrate` / `make makemigration`
+- [ ] **e2e** `tests/e2e` по docker-compose (заглушки 0 строк)
 - [ ] **Объектное хранилище (MinIO/S3)** — заменить локальную ФС; presigned-URL вместо путей
 
 ### Tier 2 — продакшн-готовность
@@ -117,5 +118,7 @@ CI: всё в `.github/workflows/ci.yml`. Чтобы добавить новый
 ---
 
 ## Рекомендуемый следующий шаг
-Дотестировать `analysis_service/tasks.py` (celery-воркер) с моками, затем взяться за **Alembic-миграции** —
-это снимает главный продакшн-риск (управление схемой БД).
+Celery-воркер и Alembic-миграции — сделаны. Дальше из Tier 1 остаётся **объектное хранилище (MinIO/S3)**
+и **e2e по docker-compose**; параллельно из Tier 2 — **запинить зависимости во всех сервисах** (дрейф уже ловили).
+Перед мержем стоит один раз поднять стек (`make up`) и убедиться, что `alembic upgrade head` проходит на Postgres
+(локально миграции верифицированы на SQLite: `upgrade head` ок для всех 4 сервисов).

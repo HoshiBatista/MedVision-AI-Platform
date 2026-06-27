@@ -37,7 +37,8 @@ app.include_router(api_v1_router, prefix="/api/v1")
 
 @app.on_event("startup")
 async def startup() -> None:
-    await create_tables()
+    if settings.auto_create_tables:
+        await create_tables()
     logger.info(
         "upload_service started",
         environment=settings.environment,

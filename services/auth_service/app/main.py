@@ -54,7 +54,8 @@ async def _seed_admin() -> None:
 
 @app.on_event("startup")
 async def startup() -> None:
-    await create_tables()
+    if settings.auto_create_tables:
+        await create_tables()
     await _seed_admin()
     logger.info(
         "auth_service started",

@@ -16,6 +16,8 @@ RUN grep -v "^torch" requirements.txt | pip install --no-cache-dir -r /dev/stdin
 
 COPY app/ ./app/
 COPY templates/ ./templates/
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1

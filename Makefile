@@ -1,6 +1,6 @@
 .PHONY: help up down build logs ps shell restart \
         up-monitoring up-triton up-all \
-        lint test-integration clean
+        lint test-integration clean migrate makemigration
 
 DC      := docker compose
 SERVICE ?= auth_service
@@ -19,6 +19,8 @@ help:
 	@echo "  make shell           Open a shell in SERVICE container"
 	@echo "  make restart         Restart SERVICE"
 	@echo "  make lint            Run ruff + mypy on all services"
+	@echo "  make migrate         Apply Alembic migrations (all DB services)"
+	@echo "  make makemigration   Autogenerate a revision (SERVICE=<svc> MSG=\"...\")"
 	@echo "  make test-integration Run integration tests"
 	@echo "  make clean           Remove volumes (DATA LOSS)"
 
@@ -71,6 +73,20 @@ lint:
 test-integration:
 	$(DC) run --rm --no-deps -e ENVIRONMENT=test auth_service \
 	  sh -c "pip install pytest httpx -q && pytest /app/tests/integration/ -v"
+
+# ── Database migrations (Alembic) ─────────────────────────────────────────────
+# On `make up` each DB service runs `alembic upgrade head` before its app starts;
+# these targets are for manual/dev use.
+migrate:
+	@for svc in auth_service upload_service analysis_service report_service; do \
+	  echo "── migrate $$svc ──"; \
+	  $(DC) run --rm $$svc alembic upgrade head; \
+	done
+
+# Autogenerate a revision for one service, e.g.:
+#   make makemigration SERVICE=auth_service MSG="add last_login"
+makemigration:
+	$(DC) run --rm $(SERVICE) alembic revision --autogenerate -m "$(MSG)"
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 clean:
