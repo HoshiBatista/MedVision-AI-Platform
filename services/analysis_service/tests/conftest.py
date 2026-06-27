@@ -21,6 +21,9 @@ _DB_FD, _DB_PATH = tempfile.mkstemp(suffix=".db", prefix="analysis_test_")
 os.close(_DB_FD)
 os.environ.update(
     DATABASE_URL=f"sqlite+aiosqlite:///{_DB_PATH}",
+    # Celery worker uses the sync engine; point it at the same SQLite file so
+    # worker tests exercise the real SyncSessionFactory (default is Postgres).
+    SYNC_DATABASE_URL=f"sqlite:///{_DB_PATH}",
     REDIS_URL="redis://localhost:6379/0",
     CELERY_BROKER_URL="redis://localhost:6379/1",
     CELERY_RESULT_BACKEND="redis://localhost:6379/2",
