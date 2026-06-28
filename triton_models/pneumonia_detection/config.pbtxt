@@ -1,0 +1,32 @@
+# Pneumonia detection — YOLOv11-det (Ultralytics ONNX export, opset 17).
+# Exported with dynamic=False + embedded NMS, so batch is baked at 1:
+# full dims are declared explicitly and max_batch_size is 0 (no batch dim folding,
+# no dynamic batching). To enable real batching, re-export with dynamic=True and
+# switch to the batched layout (max_batch_size > 0, dims without the leading 1).
+name: "pneumonia_detection"
+backend: "onnxruntime"
+max_batch_size: 0
+
+input [
+  {
+    name: "images"
+    data_type: TYPE_FP32
+    dims: [ 1, 3, 640, 640 ]
+  }
+]
+
+output [
+  {
+    # [1, 300, 6] = [x1, y1, x2, y2, conf, class_id] in 640-px coords
+    name: "output0"
+    data_type: TYPE_FP32
+    dims: [ 1, 300, 6 ]
+  }
+]
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+  }
+]

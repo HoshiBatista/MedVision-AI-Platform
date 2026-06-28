@@ -94,7 +94,7 @@
 
 ### Tier 4 — ML / инференс
 - [x] **ClearML pipeline** train→eval→export→deploy (`PipelineController`) — `ml/pipeline.py` оркеструет per-task `train/evaluate/export` скрипты; 4 шага с передачей артефактов через `${step.return}`; deploy-гейт по test mAP50 (`--min-map`); `start_locally` или `--remote --queue`. `make pipeline TASK=<task>`
-- [ ] **Triton `config.pbtxt`** — сейчас пустые (auto-config); явные shape/instance_group/dynamic_batching
+- [x] **Triton `config.pbtxt`** — заполнены для всех 3 моделей под фактические ONNX-графы (`onnxruntime` backend, `images [1,3,640,640]` FP32, output0/output1 с реальными shape). Батч зашит =1 (экспорт `dynamic=False` + встроенный NMS) → `max_batch_size: 0` с полными dims, без dynamic_batching; `instance_group` KIND_GPU. Для реального батчинга нужен ре-экспорт с `dynamic=True`
 - [ ] Регресс-гейты по метрикам моделей (Dice/mAP до таргетов)
 
 ---
