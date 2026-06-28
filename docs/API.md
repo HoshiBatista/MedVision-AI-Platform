@@ -123,7 +123,10 @@ The heatmap is served by the gateway at `/static/heatmaps/<filename>` (basename 
 
 ---
 
-## GradCAM Service
+## GradCAM Service (EigenCAM explainability)
+
+> Service name is `gradcam_service` for historical reasons; the implemented method
+> is **EigenCAM** (gradient-free) on the ONNX graph — not classic gradient-based GradCAM.
 
 ### POST /api/v1/explain
 Compute an EigenCAM heatmap for a model + image. Called by the analysis worker; failures are non-fatal there.
