@@ -82,7 +82,9 @@
 - [ ] **OpenTelemetry / Jaeger** — спаны на вызовы Triton и запросы к БД (сейчас только Prometheus)
 - [ ] **Helm-чарты / K8s** — `infra/helm` и `infra/terraform` пустые
 - [x] **Хардненинг контейнеров** — 5 python-сервисов: multi-stage (venv, компиляторы только в builder), non-root `appuser` (uid 10001, единый для прав на shared-volume'ы), HEALTHCHECK (python urllib), runtime-либы по минимуму (analysis без libpq — psycopg2-binary бандлит; gradcam/report + libgomp1). Все базовые образы (python/node/nginx) запинены по `@sha256`. report: после перехода на Ollama образ похудел (без torch/transformers). _Остаётся: non-root для nginx (gateway/frontend) — нужен unprivileged-образ + смена порта_
-- [ ] **Auth** — refresh-токены, сброс пароля, rate-limiting на gateway
+- [x] **Auth — refresh-токены** — DB-backed refresh-токены (ротация + reuse-detection + ревокация на logout); `POST /api/v1/auth/refresh`, `/logout` отзывает все токены пользователя. Access короткий и stateless. Env `REFRESH_TOKEN_EXPIRE_DAYS` (default 7)
+- [x] **Auth — rate-limiting на gateway** — `limit_req_zone` (auth/upload/api) + `limit_req` на всех API-роутах; `limit_req_status 429`; отдельная зона для `/auth/refresh` (не throttлится login-правилом)
+- [ ] **Auth — сброс пароля** (password reset flow) — ещё нет
 - [x] **Запинены зависимости во всех сервисах** — `analysis_service` переведён с `>=` на `==` (был единственным с дрейфом; остальные 4 уже на `==`). Версии выровнены на остальной проект; `tritonclient==2.54.0`+`numpy==1.26.4` (как gradcam/ml). `ml/` (тренировка) — отдельно, torch там намеренно гибкий под локальный CUDA
 
 ### Tier 3 — функционал / UX
@@ -91,7 +93,7 @@
 - [ ] **Настоящий DICOM-вьюер** (cornerstone.js) — сейчас просто `<img>`
 
 ### Tier 4 — ML / инференс
-- [ ] **ClearML pipeline** train→eval→export→deploy (`PipelineController`)
+- [x] **ClearML pipeline** train→eval→export→deploy (`PipelineController`) — `ml/pipeline.py` оркеструет per-task `train/evaluate/export` скрипты; 4 шага с передачей артефактов через `${step.return}`; deploy-гейт по test mAP50 (`--min-map`); `start_locally` или `--remote --queue`. `make pipeline TASK=<task>`
 - [ ] **Triton `config.pbtxt`** — сейчас пустые (auto-config); явные shape/instance_group/dynamic_batching
 - [ ] Регресс-гейты по метрикам моделей (Dice/mAP до таргетов)
 
@@ -129,7 +131,8 @@ CI: всё в `.github/workflows/ci.yml`. Чтобы добавить новый
 ---
 
 ## Рекомендуемый следующий шаг
-Инференс (CPU ONNX + GPU Triton), отчёты на Ollama и полный e2e happy-path — сделаны.
-Из оставшегося приоритетное: **Helm-чарты / K8s** (`infra/helm` пустой), **refresh-токены и rate-limiting** на gateway,
+Инференс (CPU ONNX + GPU Triton), отчёты на Ollama, полный e2e happy-path, ClearML pipeline,
+auth refresh-токены и gateway rate-limiting — сделаны.
+Из оставшегося приоритетное: **Helm-чарты / K8s** (`infra/helm` пустой), **password reset** (auth),
 затем **OpenTelemetry/Jaeger** и явные `config.pbtxt` для Triton. На GPU-хосте стоит один раз проверить
 `make up-gpu` (Triton + ollama на видеокарте) и подтвердить реальный реф модели OpenBioLLM-8B GGUF.
