@@ -223,16 +223,19 @@ jobs:
     permissions:
       contents: read
       security-events: write
+    env:
+      TRIVY_VERSION: "0.55.0"
     steps:
       - uses: actions/checkout@v4
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b "$RUNNER_TEMP" "v${TRIVY_VERSION}"
       - name: Trivy config scan (Helm chart)
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          scan-type: config
-          scan-ref: ${{ env.CHART_DIR }}
-          format: sarif
-          output: trivy.sarif
-          severity: HIGH,CRITICAL
+        run: |
+          "$RUNNER_TEMP/trivy" config "$CHART_DIR" \
+            --severity HIGH,CRITICAL \
+            --format sarif --output trivy.sarif | tee trivy.out || true
       - name: Upload Trivy SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3

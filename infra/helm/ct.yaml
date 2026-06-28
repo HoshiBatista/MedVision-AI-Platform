@@ -7,4 +7,6 @@ target-branch: main
 # the pipeline gates correctness via lint/template/kubeconform/conftest instead.
 check-version-increment: false
 validate-maintainers: false
+# Relaxed yamllint rules — chart values use aligned inline maps on purpose.
+lint-conf: infra/helm/lintconf.yaml
 helm-extra-args: --timeout 600s

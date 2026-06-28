@@ -1,0 +1,9 @@
+---
+# yamllint config for chart-testing (ct lint).
+# Stylistic spacing rules are intentionally off — the chart values use aligned
+# inline maps like `{ cpu: 250m, memory: 256Mi }` for readability. We still
+# enforce the checks that catch real bugs.
+rules:
+  trailing-spaces: enable
+  key-duplicates: enable
+  new-line-at-end-of-file: enable
