@@ -121,18 +121,26 @@ jobs:
           kubectl -n "$NS" exec model-loader -- find /models -name '*.onnx'
           kubectl -n "$NS" delete pod model-loader --wait=false
 
-      - name: Port-forward gateway
+      - name: Port-forward gateway + report_service
         run: |
+          # Gateway carries the API; report_service is also forwarded on :8005
+          # because the e2e suite polls its /ready directly (DIRECT_HOST:8005)
+          # to know when the Ollama model has been pulled.
           kubectl -n "$NS" port-forward "svc/${RELEASE}-medvision-gateway" \
-            "${GW_LOCAL_PORT}:80" > pf.log 2>&1 &
-          echo $! > pf.pid
+            "${GW_LOCAL_PORT}:80" > pf-gw.log 2>&1 &
+          echo $! > pf-gw.pid
+          kubectl -n "$NS" port-forward "svc/${RELEASE}-medvision-report-service" \
+            "8005:8005" > pf-report.log 2>&1 &
+          echo $! > pf-report.pid
+          ok=
           for _ in $(seq 1 30); do
             if curl -fsS "http://localhost:${GW_LOCAL_PORT}/health" >/dev/null 2>&1; then
-              echo "gateway reachable"; exit 0
+              ok=1; break
             fi
             sleep 2
           done
-          echo "::error::gateway did not become reachable"; cat pf.log; exit 1
+          [ -n "$ok" ] || { echo "::error::gateway did not become reachable"; cat pf-gw.log; exit 1; }
+          echo "gateway reachable"
 
       - uses: actions/setup-python@v5
         with:
@@ -184,6 +192,9 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Stop port-forward
+      - name: Stop port-forwards
         if: always()
-        run: '[ -f pf.pid ] && kill "$(cat pf.pid)" 2>/dev/null || true'
+        run: |
+          for f in pf-gw.pid pf-report.pid; do
+            [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null || true
+          done
