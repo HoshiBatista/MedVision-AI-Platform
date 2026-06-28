@@ -1,0 +1,200 @@
+{{/*
+Application workloads — rendered from .Values.services.
+
+  kind: worker  → Deployment only, exec (celery ping) liveness, no Service
+  bare: true    → static container (frontend); no app env / DB / shared volumes
+  default       → API Deployment + ClusterIP Service, /health + /ready probes,
+                  shared config/secret env, optional DB init container + volumes
+*/}}
+{{- $full := include "medvision.fullname" . -}}
+{{- $cfg := printf "%s-config" $full -}}
+{{- $secret := include "medvision.secretName" . -}}
+
+{{- range $key, $svc := .Values.services }}
+{{- if $svc.enabled }}
+{{- $component := include "medvision.svcName" $key }}
+{{- $name := printf "%s-%s" $full $component }}
+{{- $imageName := default $key $svc.image }}
+{{- $isWorker := eq (default "" $svc.kind) "worker" }}
+{{- $isBare := default false $svc.bare }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "medvision.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ default 1 $svc.replicas }}
+  selector:
+    matchLabels:
+      {{- include "medvision.selectorLabels" (dict "ctx" $ "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "medvision.podLabels" (dict "ctx" $ "component" $component) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "medvision.serviceAccountName" $ }}
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if not $isBare }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      {{- if and $svc.db (not $isBare) }}
+      initContainers:
+        - name: migrate
+          image: {{ include "medvision.image" (dict "ctx" $ "image" $imageName) }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: {{ $cfg }}
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: {{ include "medvision.databaseUrl" $ | quote }}
+            {{- if hasPrefix "analysis" $key }}
+            - name: SYNC_DATABASE_URL
+              value: {{ include "medvision.syncDatabaseUrl" $ | quote }}
+            {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "medvision.image" (dict "ctx" $ "image" $imageName) }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          {{- if $svc.command }}
+          command:
+            {{- toYaml $svc.command | nindent 12 }}
+          {{- else if and $svc.port (not $isBare) }}
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "{{ $svc.port }}"]
+          {{- end }}
+          {{- if $svc.port }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          {{- end }}
+          {{- if not $isBare }}
+          envFrom:
+            - configMapRef:
+                name: {{ $cfg }}
+          env:
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: JWT_SECRET_KEY
+            {{- if eq $key "auth_service" }}
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: ADMIN_PASSWORD
+            {{- end }}
+            {{- if $svc.db }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: {{ include "medvision.databaseUrl" $ | quote }}
+            {{- if hasPrefix "analysis" $key }}
+            - name: SYNC_DATABASE_URL
+              value: {{ include "medvision.syncDatabaseUrl" $ | quote }}
+            {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- if $isWorker }}
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "celery -A app.workers.celery_app.celery inspect ping -t 5 >/dev/null 2>&1 || exit 1"]
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          {{- else if $svc.port }}
+          {{- if $isBare }}
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- else }}
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          {{- if $svc.mounts }}
+          volumeMounts:
+            {{- range $svc.mounts }}
+            {{- if eq . "studyData" }}
+            - { name: study-data, mountPath: /data/studies }
+            {{- else if eq . "studyDataRO" }}
+            - { name: study-data, mountPath: /data/studies, readOnly: true }
+            {{- else if eq . "heatmapData" }}
+            - { name: heatmap-data, mountPath: /data/heatmaps }
+            {{- else if eq . "modelRepo" }}
+            - { name: model-repo, mountPath: /models, readOnly: true }
+            {{- end }}
+            {{- end }}
+          {{- end }}
+      {{- if $svc.mounts }}
+      volumes:
+        {{- $mounts := $svc.mounts }}
+        {{- if or (has "studyData" $mounts) (has "studyDataRO" $mounts) }}
+        - name: study-data
+          persistentVolumeClaim:
+            claimName: {{ $full }}-study-data
+        {{- end }}
+        {{- if has "heatmapData" $mounts }}
+        - name: heatmap-data
+          persistentVolumeClaim:
+            claimName: {{ $full }}-heatmap-data
+        {{- end }}
+        {{- if has "modelRepo" $mounts }}
+        - name: model-repo
+          persistentVolumeClaim:
+            claimName: {{ $full }}-model-repo
+        {{- end }}
+      {{- end }}
+{{- if $svc.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "medvision.labels" $ | nindent 4 }}
+spec:
+  selector:
+    {{- include "medvision.selectorLabels" (dict "ctx" $ "component" $component) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+{{- end }}
+{{- end }}
+{{- end }}

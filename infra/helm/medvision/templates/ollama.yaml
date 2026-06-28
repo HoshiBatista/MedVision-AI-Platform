@@ -1,0 +1,77 @@
+{{- if .Values.ollama.enabled }}
+{{- $full := include "medvision.fullname" . }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $full }}-ollama-data
+  labels:
+    {{- include "medvision.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.ollama.persistence.storageClass }}
+  storageClassName: {{ .Values.ollama.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ollama.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-ollama
+  labels:
+    {{- include "medvision.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "medvision.selectorLabels" (dict "ctx" . "component" "ollama") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ollama.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-ollama
+  labels:
+    {{- include "medvision.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # single RWO volume → no rolling overlap
+  selector:
+    matchLabels:
+      {{- include "medvision.selectorLabels" (dict "ctx" . "component" "ollama") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "medvision.podLabels" (dict "ctx" . "component" "ollama") | nindent 8 }}
+    spec:
+      containers:
+        - name: ollama
+          image: {{ .Values.ollama.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ollama.port }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "ollama list >/dev/null 2>&1 || exit 1"]
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            {{- $res := .Values.ollama.resources }}
+            {{- if .Values.ollama.gpu }}
+            {{- $res = mergeOverwrite (deepCopy $res) (dict "limits" (dict "nvidia.com/gpu" 1)) }}
+            {{- end }}
+            {{- toYaml $res | nindent 12 }}
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+      volumes:
+        - name: ollama-data
+          persistentVolumeClaim:
+            claimName: {{ $full }}-ollama-data
+{{- end }}
