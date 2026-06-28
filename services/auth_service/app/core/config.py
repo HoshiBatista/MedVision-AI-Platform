@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     # Long-lived, DB-backed refresh tokens (opaque; rotated on use, revocable).
     refresh_token_expire_days: int = 7
+    # Single-use password-reset tokens (opaque; delivered out-of-band).
+    password_reset_expire_minutes: int = 30
 
     # Admin seed
     admin_username: str = "admin"

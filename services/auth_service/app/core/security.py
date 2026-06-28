@@ -36,6 +36,11 @@ def create_refresh_token() -> str:
     return secrets.token_urlsafe(48)
 
 
+def create_reset_token() -> str:
+    """Generate a fresh opaque single-use password-reset token (only its hash is stored)."""
+    return secrets.token_urlsafe(48)
+
+
 def hash_token(raw: str) -> str:
-    """SHA-256 hex digest used to look up / store refresh tokens (never the raw value)."""
+    """SHA-256 hex digest used to look up / store opaque tokens (never the raw value)."""
     return hashlib.sha256(raw.encode()).hexdigest()
