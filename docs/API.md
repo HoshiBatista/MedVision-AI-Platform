@@ -61,6 +61,40 @@ latest. Presenting an expired, unknown, or already-rotated token returns `401`
 
 **Response** `200` — same shape as login (new `access_token` + new `refresh_token`).
 
+### POST /api/v1/auth/forgot-password
+Request a password reset. Always returns `200` with a generic message regardless
+of whether the email exists (no account enumeration). The reset token is
+single-use and short-lived (default 30 min).
+
+**Request**
+```json
+{ "email": "user@hospital.org" }
+```
+
+**Response** `200`
+```json
+{ "message": "If that email is registered, a password reset link has been sent.", "reset_token": "ab12..." }
+```
+
+> No mailer is wired in this project. In **production** (`ENVIRONMENT=production`)
+> `reset_token` is `null` and the token would be delivered by email; in non-production
+> it is echoed in the response so the flow is completable locally.
+
+### POST /api/v1/auth/reset-password
+Complete a reset with the token. On success the password is changed and **all of
+the user's refresh tokens are revoked** (every session must re-login). Invalid,
+used, or expired tokens return `400`.
+
+**Request**
+```json
+{ "token": "ab12...", "new_password": "n3w-passw0rd" }
+```
+
+**Response** `200`
+```json
+{ "message": "Password updated. Please log in again." }
+```
+
 ### POST /api/v1/auth/logout
 Revokes **all** of the user's refresh tokens (`204`) — real server-side
 invalidation. The current access token stays valid until it expires (short-lived

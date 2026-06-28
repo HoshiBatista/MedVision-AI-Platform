@@ -23,6 +23,17 @@ AUTH_REFRESH_TOTAL = Counter(
     ["result"],  # success | invalid | reuse_detected | inactive
 )
 
+AUTH_PASSWORD_RESET_REQUESTED = Counter(
+    "auth_password_reset_requested_total",
+    "Total password-reset requests (forgot-password)",
+)
+
+AUTH_PASSWORD_RESET_TOTAL = Counter(
+    "auth_password_reset_total",
+    "Total password-reset completions",
+    ["result"],  # completed | invalid
+)
+
 AUTH_PASSWORD_HASH_DURATION = Histogram(
     "auth_password_hash_duration_seconds",
     "Time spent hashing passwords (bcrypt)",

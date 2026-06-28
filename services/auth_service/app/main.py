@@ -10,6 +10,7 @@ from app.core.database import AsyncSessionFactory, create_tables
 from app.core.logging_config import configure_logging
 from app.core.security import hash_password
 from app.middleware.logging import RequestLoggingMiddleware
+from app.models.password_reset_token import PasswordResetToken  # noqa: F401  (registers table)
 from app.models.refresh_token import RefreshToken  # noqa: F401  (registers table)
 from app.models.user import User
 

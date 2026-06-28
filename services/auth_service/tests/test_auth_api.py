@@ -134,3 +134,108 @@ def test_logout_revokes_refresh_tokens(client, bearer):
     # After logout the refresh token can no longer be exchanged.
     res = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert res.status_code == 401
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+
+def _register(client, email="reset@example.com", password="password123"):
+    client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    return email, password
+
+
+def test_forgot_password_unknown_email_is_generic(client):
+    res = client.post("/api/v1/auth/forgot-password", json={"email": "ghost@example.com"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["message"]
+    assert body["reset_token"] is None  # no token minted for a non-existent account
+
+
+def test_forgot_password_returns_token_in_dev(client):
+    email, _ = _register(client)
+    res = client.post("/api/v1/auth/forgot-password", json={"email": email})
+    assert res.status_code == 200
+    # ENVIRONMENT=test (non-production) → token echoed for local completion.
+    assert res.json()["reset_token"]
+
+
+def test_reset_password_changes_password(client):
+    email, old = _register(client)
+    token = client.post(
+        "/api/v1/auth/forgot-password", json={"email": email}
+    ).json()["reset_token"]
+
+    res = client.post(
+        "/api/v1/auth/reset-password", json={"token": token, "new_password": "brand-new-pw1"}
+    )
+    assert res.status_code == 200
+
+    # Old password rejected, new one works.
+    assert client.post(
+        "/api/v1/auth/login", data={"username": email, "password": old}
+    ).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login", data={"username": email, "password": "brand-new-pw1"}
+    ).status_code == 200
+
+
+def test_reset_token_is_single_use(client):
+    email, _ = _register(client)
+    token = client.post(
+        "/api/v1/auth/forgot-password", json={"email": email}
+    ).json()["reset_token"]
+
+    first = client.post(
+        "/api/v1/auth/reset-password", json={"token": token, "new_password": "first-new-pw1"}
+    )
+    assert first.status_code == 200
+    second = client.post(
+        "/api/v1/auth/reset-password", json={"token": token, "new_password": "second-new-pw1"}
+    )
+    assert second.status_code == 400
+
+
+def test_reset_password_unknown_token_rejected(client):
+    res = client.post(
+        "/api/v1/auth/reset-password", json={"token": "nope", "new_password": "whatever12"}
+    )
+    assert res.status_code == 400
+
+
+def test_reset_password_short_password_rejected(client):
+    email, _ = _register(client)
+    token = client.post(
+        "/api/v1/auth/forgot-password", json={"email": email}
+    ).json()["reset_token"]
+    res = client.post(
+        "/api/v1/auth/reset-password", json={"token": token, "new_password": "short"}
+    )
+    assert res.status_code == 422  # schema validation (min length)
+
+
+def test_requesting_new_reset_invalidates_prior(client):
+    email, _ = _register(client)
+    first = client.post(
+        "/api/v1/auth/forgot-password", json={"email": email}
+    ).json()["reset_token"]
+    # Requesting again invalidates the first token.
+    client.post("/api/v1/auth/forgot-password", json={"email": email})
+    res = client.post(
+        "/api/v1/auth/reset-password", json={"token": first, "new_password": "another-pw12"}
+    )
+    assert res.status_code == 400
+
+
+def test_reset_password_revokes_refresh_tokens(client):
+    email, _ = _register(client)
+    tokens = _login_tokens(client, email, "password123")
+    reset_token = client.post(
+        "/api/v1/auth/forgot-password", json={"email": email}
+    ).json()["reset_token"]
+
+    client.post(
+        "/api/v1/auth/reset-password", json={"token": reset_token, "new_password": "post-reset-pw1"}
+    )
+    # The pre-reset refresh token must no longer work.
+    res = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert res.status_code == 401
