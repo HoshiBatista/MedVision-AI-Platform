@@ -1,4 +1,10 @@
-"""API tests for the auth endpoints (register / login / logout)."""
+"""API tests for the auth endpoints (register / login / refresh / logout)."""
+
+
+def _login_tokens(client, username="admin", password="admin") -> dict:
+    res = client.post("/api/v1/auth/login", data={"username": username, "password": password})
+    res.raise_for_status()
+    return res.json()
 
 
 def test_register_success(client):
@@ -75,3 +81,56 @@ def test_logout_requires_auth(client):
 def test_logout_with_token(client, admin_token, bearer):
     res = client.post("/api/v1/auth/logout", headers=bearer(admin_token))
     assert res.status_code == 204
+
+
+# ── Refresh-token flow ────────────────────────────────────────────────────────
+
+def test_login_returns_refresh_token(client):
+    body = _login_tokens(client)
+    assert body["access_token"]
+    assert body["refresh_token"]
+    assert body["access_token"] != body["refresh_token"]
+
+
+def test_refresh_rotates_and_returns_new_tokens(client):
+    first = _login_tokens(client)
+    res = client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert res.status_code == 200, res.text
+    rotated = res.json()
+    # A fresh access token and a *new* (rotated) refresh token are returned.
+    assert rotated["access_token"]
+    assert rotated["refresh_token"] != first["refresh_token"]
+
+
+def test_refresh_with_unknown_token_rejected(client):
+    res = client.post("/api/v1/auth/refresh", json={"refresh_token": "not-a-real-token"})
+    assert res.status_code == 401
+
+
+def test_refresh_reuse_of_rotated_token_rejected(client):
+    first = _login_tokens(client)
+    # Rotate once — the original token is now revoked.
+    client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    # Presenting the already-rotated token again must fail (reuse detection).
+    reuse = client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert reuse.status_code == 401
+
+
+def test_reuse_detection_revokes_whole_family(client):
+    first = _login_tokens(client)
+    second = client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}
+    ).json()
+    # Reuse the revoked original → should revoke the active (second) token too.
+    client.post("/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    after = client.post("/api/v1/auth/refresh", json={"refresh_token": second["refresh_token"]})
+    assert after.status_code == 401
+
+
+def test_logout_revokes_refresh_tokens(client, bearer):
+    tokens = _login_tokens(client)
+    logout = client.post("/api/v1/auth/logout", headers=bearer(tokens["access_token"]))
+    assert logout.status_code == 204
+    # After logout the refresh token can no longer be exchanged.
+    res = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+    assert res.status_code == 401

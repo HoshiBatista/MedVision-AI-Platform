@@ -41,13 +41,31 @@ username=user@hospital.org&password=s3cret
 
 **Response** `200`
 ```json
-{ "access_token": "eyJ...", "token_type": "bearer", "expires_in": 1800 }
+{ "access_token": "eyJ...", "refresh_token": "x9f...", "token_type": "bearer", "expires_in": 1800 }
 ```
 
-> Refresh tokens are not implemented yet — clients re-login when the access token expires.
+The `access_token` is a short-lived stateless JWT (`expires_in` seconds). The
+`refresh_token` is a long-lived, DB-backed opaque token (default 7 days) used to
+obtain a new access token without re-login.
+
+### POST /api/v1/auth/refresh
+Exchange a valid refresh token for a new access token. The refresh token is
+**rotated** — the old one is revoked and a new one returned, so always store the
+latest. Presenting an expired, unknown, or already-rotated token returns `401`
+(reuse of a rotated token additionally revokes the user's whole active set).
+
+**Request**
+```json
+{ "refresh_token": "x9f..." }
+```
+
+**Response** `200` — same shape as login (new `access_token` + new `refresh_token`).
 
 ### POST /api/v1/auth/logout
-Stateless acknowledgement (`204`). Also: `GET /api/v1/users/me`, `PATCH /api/v1/users/me`, and admin routes under `/api/v1/admin/users`.
+Revokes **all** of the user's refresh tokens (`204`) — real server-side
+invalidation. The current access token stays valid until it expires (short-lived
+by design); afterwards no refresh is possible. Also: `GET /api/v1/users/me`,
+`PATCH /api/v1/users/me`, and admin routes under `/api/v1/admin/users`.
 
 ---
 

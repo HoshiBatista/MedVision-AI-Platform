@@ -17,6 +17,12 @@ AUTH_LOGOUT_TOTAL = Counter(
     "Total logout calls",
 )
 
+AUTH_REFRESH_TOTAL = Counter(
+    "auth_refresh_total",
+    "Total refresh-token rotations",
+    ["result"],  # success | invalid | reuse_detected | inactive
+)
+
 AUTH_PASSWORD_HASH_DURATION = Histogram(
     "auth_password_hash_duration_seconds",
     "Time spent hashing passwords (bcrypt)",
