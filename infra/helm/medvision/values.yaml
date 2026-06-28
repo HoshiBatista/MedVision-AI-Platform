@@ -1,0 +1,242 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MedVision AI — Helm values
+#
+# This chart mirrors the docker-compose dev stack. Read infra/helm/README.md
+# before deploying — shared storage (study/heatmap) requires a ReadWriteMany
+# StorageClass, and the Triton/ONNX model repo PVC must be populated out-of-band.
+# ─────────────────────────────────────────────────────────────────────────────
+
+global:
+  # Prepended to every image repository (e.g. "ghcr.io/hoshibatista/").
+  # Leave empty to use images already present on the node / a local registry.
+  imageRegistry: ""
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+image:
+  # Image name prefix and shared tag. Per-service repos resolve to
+  # "{registry}{repository}/{service}:{tag}" e.g. medvision/auth_service:dev.
+  repository: medvision
+  tag: dev
+
+# Common environment applied to all application services (non-secret).
+commonEnv:
+  ENVIRONMENT: production
+  LOG_LEVEL: INFO
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# For production, prefer an externally-managed Secret (set existingSecret) over
+# committing these. Values here are dev defaults.
+secrets:
+  # If set, the chart uses this pre-existing Secret instead of creating one.
+  existingSecret: ""
+  jwtSecretKey: "dev-secret-change-in-prod"
+  postgresPassword: "medvision"
+  adminPassword: "admin"
+
+# ── Auth / JWT config (non-secret) ───────────────────────────────────────────
+auth:
+  jwtAlgorithm: HS256
+  accessTokenExpireMinutes: 30
+  refreshTokenExpireDays: 7
+  adminUsername: admin
+  docsEnabled: false
+
+# ── Inference backend ────────────────────────────────────────────────────────
+# onnx  → analysis_worker runs ONNX Runtime on CPU (reads model-repo PVC)
+# triton → analysis_worker calls Triton over HTTP (set triton.enabled=true)
+inference:
+  backend: onnx
+
+# ── Report LLM (Ollama) ──────────────────────────────────────────────────────
+llm:
+  modelName: "hf.co/mradermacher/Llama3-OpenBioLLM-8B-GGUF:Q8_0"
+  maxNewTokens: 512
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Persistent storage
+#
+# studyData / heatmapData are shared across pods → require ReadWriteMany.
+# postgres / redis / ollama / modelRepo are single-writer → ReadWriteOnce.
+# Set storageClass to "" to use the cluster default.
+# ─────────────────────────────────────────────────────────────────────────────
+storage:
+  studyData:
+    storageClass: ""
+    accessMode: ReadWriteMany
+    size: 20Gi
+  heatmapData:
+    storageClass: ""
+    accessMode: ReadWriteMany
+    size: 10Gi
+  modelRepo:
+    # Holds triton_models/<model>/1/*.onnx + config.pbtxt. Populate before use
+    # (kubectl cp, an init job, or bake into an image). Mounted read-only.
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi
+
+# ── Stateful infra ───────────────────────────────────────────────────────────
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  user: medvision
+  database: medvision
+  port: 5432
+  persistence:
+    storageClass: ""
+    size: 10Gi
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  port: 6379
+  persistence:
+    storageClass: ""
+    size: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+ollama:
+  enabled: true
+  image: ollama/ollama:0.5.4
+  port: 11434
+  gpu: false                 # set true + nvidia runtime for GPU report generation
+  persistence:
+    storageClass: ""
+    size: 20Gi               # GGUF weights are large
+  resources:
+    requests: { cpu: "1",  memory: 4Gi }
+    limits:   { cpu: "4",  memory: 12Gi }
+
+triton:
+  enabled: false             # GPU inference path; requires nvidia device plugin
+  image: nvcr.io/nvidia/tritonserver:24.09-py3
+  httpPort: 8000
+  grpcPort: 8001
+  metricsPort: 8002
+  gpuCount: 1
+  resources:
+    requests: { cpu: "1", memory: 2Gi }
+    limits:   { cpu: "4", memory: 8Gi }
+
+# ── Gateway (nginx + JWT routing + static file serving) ──────────────────────
+gateway:
+  enabled: true
+  replicas: 1
+  image: medvision/gateway   # tag from image.tag; only the conf is templated
+  port: 80
+  service:
+    type: ClusterIP
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: medvision.local
+  tls: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Application services. Each entry renders a Deployment (+ Service if `port`).
+# `kind: worker` services get no Service and an exec liveness probe.
+# Per-service `env` / `volumes` are merged with the shared config above.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  auth_service:
+    enabled: true
+    replicas: 1
+    port: 8001
+    db: true                 # gets DATABASE_URL + alembic init container
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+
+  upload_service:
+    enabled: true
+    replicas: 1
+    port: 8002
+    db: true
+    mounts: [studyData]
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+
+  analysis_service:
+    enabled: true
+    replicas: 1
+    port: 8003
+    db: true
+    redis: true
+    mounts: [studyData]
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: "1",  memory: 1Gi }
+
+  analysis_worker:
+    enabled: true
+    kind: worker
+    replicas: 1
+    image: analysis_service  # shares the analysis image
+    db: true
+    redis: true
+    mounts: [studyData, modelRepo]
+    command:
+      - celery
+      - -A
+      - app.workers.celery_app.celery
+      - worker
+      - -Q
+      - analysis
+      - -c
+      - "2"
+      - -l
+      - info
+      - --without-gossip
+      - --without-mingle
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits:   { cpu: "2",  memory: 4Gi }
+
+  gradcam_service:
+    enabled: true
+    replicas: 1
+    port: 8004
+    mounts: [studyDataRO, heatmapData, modelRepo]
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits:   { cpu: "1",  memory: 2Gi }
+
+  report_service:
+    enabled: true
+    replicas: 1
+    port: 8005
+    db: true
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+
+  frontend:
+    enabled: true
+    replicas: 1
+    port: 3000
+    bare: true               # static nginx; no app env / probes on /health
+    resources:
+      requests: { cpu: 50m,  memory: 64Mi }
+      limits:   { cpu: 200m, memory: 128Mi }
+
+# Pod-level defaults applied to all app workloads.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+serviceAccount:
+  create: true
+  name: ""

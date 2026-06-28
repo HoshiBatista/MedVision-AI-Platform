@@ -1,0 +1,33 @@
+MedVision AI ({{ .Release.Name }}) deployed to namespace {{ .Release.Namespace }}.
+
+Components:
+  gateway          {{ if .Values.gateway.enabled }}enabled{{ else }}disabled{{ end }} (service type: {{ .Values.gateway.service.type }})
+  inference backend {{ .Values.inference.backend }}{{ if eq .Values.inference.backend "triton" }}{{ if not .Values.triton.enabled }}  ⚠ backend=triton but triton.enabled=false{{ end }}{{ end }}
+  triton           {{ if .Values.triton.enabled }}enabled (GPU){{ else }}disabled{{ end }}
+  ollama GPU       {{ if .Values.ollama.gpu }}enabled{{ else }}disabled (CPU){{ end }}
+
+1. Watch rollout:
+     kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+
+2. Populate the model repo PVC ({{ include "medvision.fullname" . }}-model-repo) with
+   triton_models/ before analysis works (onnx backend or triton). Example:
+     kubectl -n {{ .Release.Namespace }} run model-loader --image=busybox --restart=Never \
+       --overrides='{"spec":{"containers":[{"name":"c","image":"busybox","command":["sleep","3600"],"volumeMounts":[{"name":"m","mountPath":"/models"}]}],"volumes":[{"name":"m","persistentVolumeClaim":{"claimName":"{{ include "medvision.fullname" . }}-model-repo"}}]}}'
+     kubectl -n {{ .Release.Namespace }} cp triton_models/. model-loader:/models/
+
+{{- if .Values.ingress.enabled }}
+
+3. Reach the app at: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}/
+{{- else }}
+
+3. No Ingress. Port-forward the gateway:
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "medvision.fullname" . }}-gateway 8080:{{ .Values.gateway.port }}
+   then open http://localhost:8080/
+{{- end }}
+
+{{- if not .Values.secrets.existingSecret }}
+
+⚠ Using chart-managed secrets with DEV defaults. For production set
+  secrets.existingSecret or override secrets.* (jwtSecretKey, postgresPassword,
+  adminPassword) with real values.
+{{- end }}

@@ -1,6 +1,7 @@
 .PHONY: help up up-cpu down build logs ps shell restart \
         up-monitoring up-triton up-gpu up-all \
-        lint test-integration e2e clean migrate makemigration pipeline
+        lint test-integration e2e clean migrate makemigration pipeline \
+        helm-lint helm-template helm-install helm-uninstall
 
 DC      := docker compose
 # ML pipeline (ClearML PipelineController). Runs on the host venv, not in compose.
@@ -30,6 +31,9 @@ help:
 	@echo "  make test-integration Run integration tests"
 	@echo "  make e2e             Bring up the stack and run e2e tests (then tear down)"
 	@echo "  make pipeline        Run ClearML train→eval→export→deploy (TASK=<task>)"
+	@echo "  make helm-lint       Lint the Helm chart (infra/helm/medvision)"
+	@echo "  make helm-template   Render K8s manifests to stdout (ARGS=\"--set ...\")"
+	@echo "  make helm-install    helm upgrade --install (RELEASE/NS overridable)"
 	@echo "  make clean           Remove volumes (DATA LOSS)"
 
 # ── Ensure .env exists ────────────────────────────────────────────────────────
@@ -119,6 +123,28 @@ migrate:
 #   make makemigration SERVICE=auth_service MSG="add last_login"
 makemigration:
 	$(DC) run --rm $(SERVICE) alembic revision --autogenerate -m "$(MSG)"
+
+# ── Helm / Kubernetes ─────────────────────────────────────────────────────────
+# Chart lives in infra/helm/medvision (see infra/helm/README.md).
+# Override release/namespace: make helm-install RELEASE=medv NS=medvision
+HELM     := helm
+CHART    := infra/helm/medvision
+RELEASE  ?= medv
+NS       ?= medvision
+
+helm-lint:
+	$(HELM) lint $(CHART)
+
+# Render manifests to stdout. Append ARGS="--set triton.enabled=true ...".
+helm-template:
+	$(HELM) template $(RELEASE) $(CHART) $(ARGS)
+
+helm-install:
+	$(HELM) upgrade --install $(RELEASE) $(CHART) \
+	  --namespace $(NS) --create-namespace $(ARGS)
+
+helm-uninstall:
+	$(HELM) uninstall $(RELEASE) --namespace $(NS)
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 clean:

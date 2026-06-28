@@ -1,0 +1,34 @@
+{{/*
+Shared persistent volumes.
+
+  study-data   (RWX)  written by upload + analysis-worker, read by gradcam + gateway
+  heatmap-data (RWX)  written by gradcam, read by gateway
+  model-repo   (RWO)  ONNX models + config.pbtxt; read by worker (onnx) / triton
+
+RWX volumes require a ReadWriteMany-capable StorageClass (NFS, CephFS, EFS,
+Azure Files, Filestore, ...). See infra/helm/README.md.
+*/}}
+{{- define "medvision.pvc" -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "medvision.labels" .ctx | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .cfg.accessMode }}
+  resources:
+    requests:
+      storage: {{ .cfg.size }}
+  {{- if .cfg.storageClass }}
+  storageClassName: {{ .cfg.storageClass | quote }}
+  {{- end }}
+{{- end -}}
+
+{{- $full := include "medvision.fullname" . -}}
+{{ include "medvision.pvc" (dict "ctx" . "name" (printf "%s-study-data" $full) "cfg" .Values.storage.studyData) }}
+---
+{{ include "medvision.pvc" (dict "ctx" . "name" (printf "%s-heatmap-data" $full) "cfg" .Values.storage.heatmapData) }}
+---
+{{ include "medvision.pvc" (dict "ctx" . "name" (printf "%s-model-repo" $full) "cfg" .Values.storage.modelRepo) }}
