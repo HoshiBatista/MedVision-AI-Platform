@@ -1,0 +1,95 @@
+# Self-contained profile for the in-cluster deploy E2E (kind, single node).
+#
+# - Images are the compose-built medvision/<svc>:dev, loaded into kind.
+# - CPU/ONNX inference + a tiny report LLM so everything runs without a GPU.
+# - ReadWriteOnce volumes (kind local-path); all pods land on the one node so
+#   the shared study/heatmap PVCs can be co-mounted.
+# - Resource requests are shrunk to fit a 2-CPU / 7 GB GitHub runner.
+image:
+  repository: medvision
+  tag: dev
+
+commonEnv:
+  ENVIRONMENT: production
+  LOG_LEVEL: INFO
+
+inference:
+  backend: onnx
+
+triton:
+  enabled: false
+
+ollama:
+  enabled: true
+  gpu: false
+  persistence:
+    size: 5Gi
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits:   { cpu: "2",  memory: 3Gi }
+
+llm:
+  # Tiny instruct model — fast to pull and run on CPU inside the cluster.
+  modelName: "qwen2.5:0.5b"
+  maxNewTokens: 256
+
+storage:
+  studyData:
+    accessMode: ReadWriteOnce
+    size: 2Gi
+  heatmapData:
+    accessMode: ReadWriteOnce
+    size: 2Gi
+  modelRepo:
+    accessMode: ReadWriteOnce
+    size: 2Gi
+
+postgres:
+  persistence:
+    size: 2Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+redis:
+  persistence:
+    size: 1Gi
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+
+secrets:
+  jwtSecretKey: "kind-e2e-not-a-real-secret"
+  postgresPassword: "kind-e2e-postgres"
+  adminPassword: "kind-e2e-admin"
+
+# Trim requests so the whole stack schedules on one node.
+services:
+  auth_service:
+    resources:
+      requests: { cpu: 25m, memory: 96Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+  upload_service:
+    resources:
+      requests: { cpu: 25m, memory: 96Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+  analysis_service:
+    resources:
+      requests: { cpu: 25m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 768Mi }
+  analysis_worker:
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: "1",  memory: 1536Mi }
+  gradcam_service:
+    resources:
+      requests: { cpu: 50m, memory: 192Mi }
+      limits:   { cpu: 500m, memory: 1Gi }
+  report_service:
+    resources:
+      requests: { cpu: 25m, memory: 96Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+  frontend:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits:   { cpu: 200m, memory: 128Mi }
