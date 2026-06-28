@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 from jose import jwt
@@ -27,3 +29,13 @@ def create_access_token(user_id: int, role: str) -> str:
 
 def decode_access_token(token: str) -> dict:
     return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+
+
+def create_refresh_token() -> str:
+    """Generate a fresh opaque refresh token (only its hash is stored)."""
+    return secrets.token_urlsafe(48)
+
+
+def hash_token(raw: str) -> str:
+    """SHA-256 hex digest used to look up / store refresh tokens (never the raw value)."""
+    return hashlib.sha256(raw.encode()).hexdigest()

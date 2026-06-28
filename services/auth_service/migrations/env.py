@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.database import Base
 
 # Import model modules so their tables register on Base.metadata.
+import app.models.refresh_token  # noqa: E402,F401
 import app.models.user  # noqa: E402,F401
 
 config = context.config
