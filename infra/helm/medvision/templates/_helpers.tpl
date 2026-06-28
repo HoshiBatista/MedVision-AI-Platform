@@ -89,3 +89,33 @@ Async (asyncpg) DATABASE_URL pointing at the in-cluster postgres service.
 {{- define "medvision.redisHost" -}}
 {{- printf "%s-redis:%v" (include "medvision.fullname" .) .Values.redis.port -}}
 {{- end -}}
+
+{{/*
+Shared (non-secret) application config — rendered into the ConfigMap and hashed
+into a checksum annotation on the workloads. Defined as a named template (not a
+file include) so it resolves when a single template is rendered in isolation
+(e.g. under helm-unittest).
+*/}}
+{{- define "medvision.appConfig" -}}
+ENVIRONMENT: {{ .Values.commonEnv.ENVIRONMENT | quote }}
+LOG_LEVEL: {{ .Values.commonEnv.LOG_LEVEL | quote }}
+AUTO_CREATE_TABLES: "false"
+JWT_ALGORITHM: {{ .Values.auth.jwtAlgorithm | quote }}
+ACCESS_TOKEN_EXPIRE_MINUTES: {{ .Values.auth.accessTokenExpireMinutes | quote }}
+REFRESH_TOKEN_EXPIRE_DAYS: {{ .Values.auth.refreshTokenExpireDays | quote }}
+ADMIN_USERNAME: {{ .Values.auth.adminUsername | quote }}
+DOCS_ENABLED: {{ .Values.auth.docsEnabled | quote }}
+STORAGE_ROOT: "/data/studies"
+HEATMAP_OUTPUT_DIR: "/data/heatmaps"
+MODEL_REPO_ROOT: "/models"
+INFERENCE_BACKEND: {{ .Values.inference.backend | quote }}
+TRITON_HTTP_URL: {{ printf "%s-triton:%v" (include "medvision.fullname" .) .Values.triton.httpPort | quote }}
+TRITON_GRPC_URL: {{ printf "%s-triton:%v" (include "medvision.fullname" .) .Values.triton.grpcPort | quote }}
+GRADCAM_SERVICE_URL: {{ printf "http://%s-gradcam-service:8004" (include "medvision.fullname" .) | quote }}
+OLLAMA_URL: {{ printf "http://%s-ollama:%v" (include "medvision.fullname" .) .Values.ollama.port | quote }}
+REDIS_URL: {{ printf "redis://%s/0" (include "medvision.redisHost" .) | quote }}
+CELERY_BROKER_URL: {{ printf "redis://%s/1" (include "medvision.redisHost" .) | quote }}
+CELERY_RESULT_BACKEND: {{ printf "redis://%s/2" (include "medvision.redisHost" .) | quote }}
+LLM_MODEL_NAME: {{ .Values.llm.modelName | quote }}
+LLM_MAX_NEW_TOKENS: {{ .Values.llm.maxNewTokens | quote }}
+{{- end -}}

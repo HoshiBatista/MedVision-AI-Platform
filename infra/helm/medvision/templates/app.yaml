@@ -34,7 +34,7 @@ spec:
       labels:
         {{- include "medvision.podLabels" (dict "ctx" $ "component" $component) | nindent 8 }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        checksum/config: {{ include "medvision.appConfig" $ | sha256sum }}
     spec:
       serviceAccountName: {{ include "medvision.serviceAccountName" $ }}
       {{- with $.Values.global.imagePullSecrets }}
