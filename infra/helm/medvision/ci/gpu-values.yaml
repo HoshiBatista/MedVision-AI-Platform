@@ -1,0 +1,38 @@
+# CI profile — GPU path: Triton inference + GPU report generation + Ingress.
+# Exercises the GPU-gated templates and the Ingress object.
+image:
+  repository: medvision
+  tag: ci
+
+inference:
+  backend: triton
+
+triton:
+  enabled: true
+  gpuCount: 1
+
+ollama:
+  gpu: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: medvision.ci.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "512m"
+  tls:
+    - hosts: [medvision.ci.example.com]
+      secretName: medvision-tls
+
+storage:
+  studyData:
+    storageClass: nfs-rwx
+    accessMode: ReadWriteMany
+  heatmapData:
+    storageClass: nfs-rwx
+    accessMode: ReadWriteMany
+
+secrets:
+  jwtSecretKey: "ci-not-a-real-secret"
+  postgresPassword: "ci-postgres"
+  adminPassword: "ci-admin"

@@ -1,0 +1,27 @@
+suite: triton serving
+templates:
+  - templates/triton.yaml
+tests:
+  - it: is not rendered when disabled (default)
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a Service and Deployment when enabled
+    set:
+      triton.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: reserves the requested number of GPUs
+    set:
+      triton.enabled: true
+      triton.gpuCount: 2
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits["nvidia.com/gpu"]
+          value: 2
+        documentSelector:
+          path: kind
+          value: Deployment

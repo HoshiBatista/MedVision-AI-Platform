@@ -1,0 +1,47 @@
+# CI profile — production-shaped config: external secret, scaled replicas,
+# bundled Postgres/Redis disabled (managed services assumed), Ingress + TLS.
+image:
+  repository: medvision
+  tag: ci
+
+commonEnv:
+  ENVIRONMENT: production
+  LOG_LEVEL: WARNING
+
+# Use an externally-managed Secret (created out-of-band) instead of chart values.
+secrets:
+  existingSecret: medvision-prod-secrets
+
+inference:
+  backend: triton
+
+triton:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: medvision.example.com
+  tls:
+    - hosts: [medvision.example.com]
+      secretName: medvision-prod-tls
+
+storage:
+  studyData:
+    storageClass: efs-sc
+    accessMode: ReadWriteMany
+    size: 100Gi
+  heatmapData:
+    storageClass: efs-sc
+    accessMode: ReadWriteMany
+    size: 50Gi
+
+services:
+  analysis_service:
+    replicas: 2
+  analysis_worker:
+    replicas: 3
+  gradcam_service:
+    replicas: 2
+  auth_service:
+    replicas: 2
