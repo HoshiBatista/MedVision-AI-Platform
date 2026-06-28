@@ -1,0 +1,10 @@
+# chart-testing (ct) config for the Helm/K8s pipeline.
+# https://github.com/helm/chart-testing
+chart-dirs:
+  - infra/helm
+target-branch: main
+# We iterate the chart in place without bumping the version on every change;
+# the pipeline gates correctness via lint/template/kubeconform/conftest instead.
+check-version-increment: false
+validate-maintainers: false
+helm-extra-args: --timeout 600s

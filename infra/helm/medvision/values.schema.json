@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "MedVision Helm values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "imageRegistry": { "type": "string" },
+        "imagePullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "imagePullSecrets": { "type": "array" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["repository", "tag"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "jwtSecretKey": { "type": "string" },
+        "postgresPassword": { "type": "string" },
+        "adminPassword": { "type": "string" }
+      }
+    },
+    "inference": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "backend": { "type": "string", "enum": ["onnx", "triton"] }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "studyData": { "$ref": "#/definitions/pvcSpec" },
+        "heatmapData": { "$ref": "#/definitions/pvcSpec" },
+        "modelRepo": { "$ref": "#/definitions/pvcSpec" }
+      }
+    },
+    "postgres": { "$ref": "#/definitions/toggle" },
+    "redis": { "$ref": "#/definitions/toggle" },
+    "ollama": { "$ref": "#/definitions/toggle" },
+    "triton": { "$ref": "#/definitions/toggle" },
+    "gateway": { "$ref": "#/definitions/toggle" },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string" }
+      }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "replicas": { "type": "integer", "minimum": 0 },
+          "port": { "type": "integer" },
+          "kind": { "type": "string", "enum": ["worker"] },
+          "db": { "type": "boolean" },
+          "redis": { "type": "boolean" },
+          "bare": { "type": "boolean" },
+          "mounts": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "pvcSpec": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "storageClass": { "type": "string" },
+        "accessMode": {
+          "type": "string",
+          "enum": ["ReadWriteOnce", "ReadWriteMany", "ReadOnlyMany", "ReadWriteOncePod"]
+        },
+        "size": { "type": "string" }
+      }
+    },
+    "toggle": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    }
+  }
+}

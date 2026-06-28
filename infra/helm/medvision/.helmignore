@@ -4,4 +4,7 @@
 *.tmp
 *.bak
 *.swp
+# CI-only assets — not part of the distributable chart.
 ci/
+tests/
+*_test.yaml

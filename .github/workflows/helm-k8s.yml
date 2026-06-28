@@ -1,0 +1,338 @@
+name: Helm / K8s CD
+
+# Dedicated delivery pipeline for the Kubernetes deployment artifacts
+# (Helm chart + OPA policies). Kept separate from the application CI (ci.yml)
+# so infra changes get focused lint → unit-test → render → schema-validate →
+# policy → security → cluster-dry-run → package/publish coverage.
+
+on:
+  push:
+    branches: [main]
+    tags: ["helm-v*"]
+    paths:
+      - "infra/helm/**"
+      - "infra/policy/**"
+      - ".github/workflows/helm-k8s.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/helm/**"
+      - "infra/policy/**"
+      - ".github/workflows/helm-k8s.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Package and push the chart to GHCR (OCI)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: helm-k8s-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CHART_DIR: infra/helm/medvision
+  POLICY_DIR: infra/policy/conftest/policy
+  HELM_VERSION: v3.16.3
+  KUBECONFORM_VERSION: "0.6.7"
+  CONFTEST_VERSION: "0.56.0"
+  KUBELINTER_VERSION: "0.7.1"
+  HELM_UNITTEST_VERSION: "v0.5.1"
+
+jobs:
+  # ───────────────────────────── Lint ────────────────────────────────────────
+  lint:
+    name: Lint (helm · schema · ct · yamllint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: helm lint (with values.schema.json)
+        run: |
+          helm lint "$CHART_DIR" --strict
+          helm lint "$CHART_DIR" -f "$CHART_DIR/ci/cpu-values.yaml" --strict
+          helm lint "$CHART_DIR" -f "$CHART_DIR/ci/gpu-values.yaml" --strict
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+      - name: ct lint
+        run: |
+          ct lint --config infra/helm/ct.yaml \
+            --target-branch "${{ github.event.repository.default_branch }}" \
+            --all
+      - name: yamllint (values + CI profiles)
+        run: |
+          pipx run yamllint -d relaxed \
+            "$CHART_DIR/values.yaml" "$CHART_DIR/ci/" infra/helm/ct.yaml
+      - name: Summary
+        if: always()
+        run: echo "### Helm lint complete" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────── Unit tests ────────────────────────────────────
+  unittest:
+    name: helm-unittest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version "${{ env.HELM_UNITTEST_VERSION }}"
+      - name: Run chart unit tests
+        run: helm unittest "$CHART_DIR" --color
+      - name: Summary
+        if: always()
+        run: echo "### helm-unittest complete" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────── Render ────────────────────────────────────────
+  render:
+    name: Render · ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [cpu, gpu, prod]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Render manifests
+        run: |
+          mkdir -p rendered
+          helm template medv "$CHART_DIR" \
+            -f "$CHART_DIR/ci/${{ matrix.profile }}-values.yaml" \
+            --namespace medvision \
+            > "rendered/${{ matrix.profile }}.yaml"
+          echo "Rendered $(grep -c '^kind:' rendered/${{ matrix.profile }}.yaml) objects"
+      - name: Upload rendered manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-${{ matrix.profile }}
+          path: rendered/${{ matrix.profile }}.yaml
+          retention-days: 7
+
+  # ───────────────────── Schema validation (kubeconform) ──────────────────────
+  kubeconform:
+    name: kubeconform · k8s ${{ matrix.k8s }} · ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    needs: render
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [cpu, gpu, prod]
+        k8s: ["1.27.0", "1.29.0", "1.31.0"]
+    steps:
+      - name: Download rendered manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: rendered-${{ matrix.profile }}
+      - name: Install kubeconform
+        run: |
+          curl -fsSL -o kc.tgz \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar xf kc.tgz kubeconform
+      - name: Validate
+        run: |
+          ./kubeconform -strict -summary -verbose \
+            -ignore-missing-schemas \
+            -kubernetes-version "${{ matrix.k8s }}" \
+            "${{ matrix.profile }}.yaml" | tee kubeconform.out
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### kubeconform — ${{ matrix.profile }} @ k8s ${{ matrix.k8s }}"
+            echo '```'
+            tail -n 8 kubeconform.out 2>/dev/null || echo "no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────── Best-practice lint (advisory) ──────────────────────
+  kube-linter:
+    name: kube-linter (advisory)
+    runs-on: ubuntu-latest
+    needs: render
+    continue-on-error: true
+    steps:
+      - name: Download rendered (cpu)
+        uses: actions/download-artifact@v4
+        with:
+          name: rendered-cpu
+      - name: Install kube-linter
+        run: |
+          curl -fsSL -o kl.tar.gz \
+            "https://github.com/stackrox/kube-linter/releases/download/v${KUBELINTER_VERSION}/kube-linter-linux.tar.gz"
+          tar xf kl.tar.gz kube-linter
+      - name: Lint rendered manifests
+        run: ./kube-linter lint cpu.yaml || true
+      - name: Summary
+        if: always()
+        run: echo "### kube-linter ran (advisory)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ────────────────────────── OPA policy (conftest) ───────────────────────────
+  policy:
+    name: OPA policy (conftest)
+    runs-on: ubuntu-latest
+    needs: render
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download rendered manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rendered-*
+          merge-multiple: true
+          path: rendered
+      - name: Install conftest
+        run: |
+          curl -fsSL -o conftest.tar.gz \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          tar xf conftest.tar.gz conftest
+      - name: Enforce policies
+        run: |
+          ./conftest test --policy "$POLICY_DIR" \
+            rendered/cpu.yaml rendered/gpu.yaml rendered/prod.yaml | tee conftest.out
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### conftest policy"
+            echo '```'
+            tail -n 25 conftest.out 2>/dev/null || echo "no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────── Security scanning (advisory) ──────────────────────
+  security:
+    name: Security scan (trivy · checkov)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan (Helm chart)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: config
+          scan-ref: ${{ env.CHART_DIR }}
+          format: sarif
+          output: trivy.sarif
+          severity: HIGH,CRITICAL
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-helm
+      - name: Checkov (Helm)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/helm
+          framework: helm
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+          soft_fail: true
+      - name: Upload Checkov SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+          category: checkov-helm
+
+  # ───────────────── Cluster admission dry-run (kind, no images) ──────────────
+  kind-dry-run:
+    name: kind apply --dry-run=server
+    runs-on: ubuntu-latest
+    needs: render
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: medvision-ci
+      - name: Download rendered (cpu)
+        uses: actions/download-artifact@v4
+        with:
+          name: rendered-cpu
+      - name: Server-side dry-run apply
+        run: |
+          kubectl create namespace medvision --dry-run=client -o yaml | kubectl apply -f -
+          # Server-side dry-run validates against the real API server (schemas +
+          # admission) without scheduling pods or pulling images.
+          kubectl apply --dry-run=server -n medvision -f cpu.yaml
+      - name: Summary
+        if: always()
+        run: echo "### kind server-side dry-run passed" >> "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────── Package & publish (gated) ────────────────────────
+  package-publish:
+    name: Package & publish chart (GHCR)
+    runs-on: ubuntu-latest
+    needs: [lint, unittest, kubeconform, policy, kind-dry-run]
+    if: |
+      startsWith(github.ref, 'refs/tags/helm-v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Package
+        run: helm package "$CHART_DIR" -d dist
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Push (OCI)
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push dist/medvision-*.tgz "oci://ghcr.io/${owner}/charts"
+      - name: Summary
+        if: always()
+        run: echo "### Chart packaged and pushed to GHCR" >> "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────── Gate ────────────────────────────────────────
+  helm-cd-success:
+    name: Helm/K8s pipeline success
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - lint
+      - unittest
+      - render
+      - kubeconform
+      - policy
+      - kind-dry-run
+    steps:
+      - name: Check required job results
+        run: |
+          results="${{ join(needs.*.result, ',') }}"
+          echo "Required job results: ${results}"
+          {
+            echo "### Helm/K8s gate"
+            echo "Results: \`${results}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if echo "${results}" | grep -qE 'failure|cancelled'; then
+            echo "::error::One or more required Helm/K8s jobs failed"
+            exit 1
+          fi
+          echo "All required Helm/K8s checks passed" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,72 @@
+suite: application workloads
+templates:
+  - templates/app.yaml
+tests:
+  - it: worker renders a Deployment only (no Service) and runs celery
+    set:
+      services.analysis_service.enabled: false
+      services.auth_service.enabled: false
+      services.upload_service.enabled: false
+      services.gradcam_service.enabled: false
+      services.report_service.enabled: false
+      services.frontend.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].command[0]
+          value: celery
+
+  - it: db services get an alembic upgrade init container
+    set:
+      services.analysis_service.enabled: false
+      services.analysis_worker.enabled: false
+      services.upload_service.enabled: false
+      services.gradcam_service.enabled: false
+      services.report_service.enabled: false
+      services.frontend.enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].command
+          value:
+            - alembic
+            - upgrade
+            - head
+        documentSelector:
+          path: kind
+          value: Deployment
+
+  - it: analysis containers receive a SYNC_DATABASE_URL
+    set:
+      services.auth_service.enabled: false
+      services.analysis_worker.enabled: false
+      services.upload_service.enabled: false
+      services.gradcam_service.enabled: false
+      services.report_service.enabled: false
+      services.frontend.enabled: false
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SYNC_DATABASE_URL
+            value: postgresql+psycopg2://medvision:$(POSTGRES_PASSWORD)@RELEASE-NAME-medvision-postgres:5432/medvision
+        documentSelector:
+          path: kind
+          value: Deployment
+
+  - it: non-db services have no init container
+    set:
+      services.analysis_service.enabled: false
+      services.analysis_worker.enabled: false
+      services.auth_service.enabled: false
+      services.upload_service.enabled: false
+      services.report_service.enabled: false
+      services.frontend.enabled: false
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+        documentSelector:
+          path: kind
+          value: Deployment

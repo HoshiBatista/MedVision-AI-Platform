@@ -1,0 +1,26 @@
+# CI profile — default CPU / ONNX inference path.
+# Used by the helm-k8s pipeline (render, kubeconform, conftest, kind dry-run).
+image:
+  repository: medvision
+  tag: ci
+
+inference:
+  backend: onnx
+
+triton:
+  enabled: false
+
+ollama:
+  gpu: false
+
+# Single-node CI clusters (kind) only offer ReadWriteOnce via local-path.
+storage:
+  studyData:
+    accessMode: ReadWriteOnce
+  heatmapData:
+    accessMode: ReadWriteOnce
+
+secrets:
+  jwtSecretKey: "ci-not-a-real-secret"
+  postgresPassword: "ci-postgres"
+  adminPassword: "ci-admin"

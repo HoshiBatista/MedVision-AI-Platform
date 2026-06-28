@@ -1,0 +1,22 @@
+suite: gateway routing
+templates:
+  - templates/gateway-configmap.yaml
+tests:
+  - it: templates nginx upstreams with the in-cluster Service names
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "server RELEASE-NAME-medvision-auth-service:8001"
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "server RELEASE-NAME-medvision-report-service:8005"
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "limit_req_zone .* zone=auth_rl"
+
+  - it: is not rendered when the gateway is disabled
+    set:
+      gateway.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
