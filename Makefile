@@ -1,8 +1,11 @@
 .PHONY: help up up-cpu down build logs ps shell restart \
         up-monitoring up-triton up-gpu up-all \
-        lint test-integration e2e clean migrate makemigration
+        lint test-integration e2e clean migrate makemigration pipeline
 
 DC      := docker compose
+# ML pipeline (ClearML PipelineController). Runs on the host venv, not in compose.
+PY      := python
+TASK    ?= mri_segmentation
 # GPU/Triton variant: base stack + GPU overlay + triton profile, with inference
 # routed to Triton instead of the default local ONNX Runtime (CPU) backend.
 GPU_DC  := INFERENCE_BACKEND=triton $(DC) -f docker-compose.yml -f docker-compose.gpu.yml --profile triton
@@ -26,6 +29,7 @@ help:
 	@echo "  make makemigration   Autogenerate a revision (SERVICE=<svc> MSG=\"...\")"
 	@echo "  make test-integration Run integration tests"
 	@echo "  make e2e             Bring up the stack and run e2e tests (then tear down)"
+	@echo "  make pipeline        Run ClearML train→eval→export→deploy (TASK=<task>)"
 	@echo "  make clean           Remove volumes (DATA LOSS)"
 
 # ── Ensure .env exists ────────────────────────────────────────────────────────
@@ -94,6 +98,13 @@ e2e: .env
 	  $(DC) logs --no-color --tail=200 > e2e-compose.log 2>&1 || true; \
 	  $(DC) down -v; \
 	  exit $$rc
+
+# ── ML pipeline (ClearML) ─────────────────────────────────────────────────────
+# Full train→eval→export→deploy DAG for one task, run locally on the host venv:
+#   make pipeline TASK=pneumonia_detection
+# Append ARGS for extras, e.g. ARGS="--remote --queue default" or ARGS="--min-map 0.5".
+pipeline:
+	$(PY) ml/pipeline.py --task $(TASK) $(ARGS)
 
 # ── Database migrations (Alembic) ─────────────────────────────────────────────
 # On `make up` each DB service runs `alembic upgrade head` before its app starts;
