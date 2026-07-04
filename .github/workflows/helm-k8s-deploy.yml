@@ -65,8 +65,15 @@ jobs:
           docker compose build
           echo "Built images:"; docker images 'medvision/*' --format '  {{.Repository}}:{{.Tag}}'
 
+      - name: Ensure runner tool cache directory
+        # kind-action installs kind/kubectl into $RUNNER_TOOL_CACHE; on some
+        # runners the directory is not pre-created until a setup-* action runs.
+        run: |
+          sudo mkdir -p "${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}"
+          sudo chmod 1777 "${RUNNER_TOOL_CACHE:-/opt/hostedtoolcache}"
+
       - name: Create kind cluster
-        uses: helm/kind-action@v1.10.0
+        uses: helm/kind-action@v1.14.0
         with:
           cluster_name: medvision-ci
           wait: 120s
