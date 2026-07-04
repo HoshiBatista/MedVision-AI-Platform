@@ -1,7 +1,7 @@
 import structlog
 from app.core.deps import get_current_user_id, get_db
 from app.models.job import AnalysisJob
-from app.schemas.job import JobListResponse, JobResultResponse, JobSummaryResponse
+from app.schemas.job import JobListResponse, JobResultResponse
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
