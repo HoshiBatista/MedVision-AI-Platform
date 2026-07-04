@@ -25,6 +25,23 @@ class JobQueuedResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class JobSummaryResponse(BaseModel):
+    job_id: str = Field(validation_alias="id")
+    study_id: str
+    task: str
+    status: str
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class JobListResponse(BaseModel):
+    items: list[JobSummaryResponse]
+    total: int
+
+
 class JobResultResponse(BaseModel):
     # the ORM column is `id`; expose it as `job_id`
     job_id: str = Field(validation_alias="id")

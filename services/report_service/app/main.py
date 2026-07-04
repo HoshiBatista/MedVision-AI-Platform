@@ -1,8 +1,9 @@
 import structlog
 from app.api.v1 import router as api_v1_router
 from app.core.config import settings
-from app.core.database import AsyncSessionFactory, create_tables
+from app.core.database import AsyncSessionFactory, create_tables, engine
 from app.core.logging_config import configure_logging
+from app.core.telemetry import instrument_sqlalchemy_engines, setup_telemetry
 from app.services.report_generator import report_generator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,18 @@ app.add_middleware(
 )
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+setup_telemetry(
+    app=app,
+    service_name="report_service",
+    enabled=settings.otel_traces_enabled,
+    otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+)
+instrument_sqlalchemy_engines(
+    engine.sync_engine,
+    enabled=settings.otel_traces_enabled,
+    otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+)
 
 app.include_router(api_v1_router, prefix="/api/v1")
 

@@ -1,6 +1,7 @@
 from celery import Celery
 
 from app.core.config import settings
+from app.core.telemetry import setup_celery_telemetry
 
 celery = Celery(
     "analysis_service",
@@ -19,4 +20,10 @@ celery.conf.update(
     task_routes={
         "analysis.run": {"queue": "analysis"},
     },
+)
+
+setup_celery_telemetry(
+    service_name="analysis_worker",
+    enabled=settings.otel_traces_enabled,
+    otlp_endpoint=settings.otel_exporter_otlp_endpoint,
 )

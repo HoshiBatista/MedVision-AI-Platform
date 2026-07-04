@@ -28,6 +28,7 @@ import structlog
 
 from app.core.config import settings
 from app.core.metrics import ONNX_INFER_DURATION_SECONDS, ONNX_INFER_ERRORS_TOTAL
+from app.core.telemetry import traced_span
 from app.services.triton_client import (
     _TASK_TO_MODEL,
     _load_image,
@@ -82,12 +83,18 @@ class OnnxClient:
 
         start = time.perf_counter()
         try:
-            if task == "segmentation":
-                out0, out1 = sess.run(["output0", "output1"], {input_name: tensor})
-                findings = _postprocess_segmentation(out0, out1, orig_w, orig_h)
-            else:
-                (out0,) = sess.run(["output0"], {input_name: tensor})
-                findings = _postprocess_detection(out0, orig_w, orig_h)
+            with traced_span(
+                "onnx.infer",
+                enabled=settings.otel_traces_enabled,
+                otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+                attributes={"model.name": model_name, "task": task},
+            ):
+                if task == "segmentation":
+                    out0, out1 = sess.run(["output0", "output1"], {input_name: tensor})
+                    findings = _postprocess_segmentation(out0, out1, orig_w, orig_h)
+                else:
+                    (out0,) = sess.run(["output0"], {input_name: tensor})
+                    findings = _postprocess_detection(out0, orig_w, orig_h)
         except Exception as exc:
             ONNX_INFER_ERRORS_TOTAL.labels(model=model_name, error_type=type(exc).__name__).inc()
             logger.error("onnx infer failed", model=model_name, error=str(exc))

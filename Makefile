@@ -17,7 +17,7 @@ help:
 	@echo ""
 	@echo "  make up              Start core stack — CPU inference (local ONNX Runtime)"
 	@echo "  make up-gpu          Core stack — GPU inference via Triton (needs NVIDIA toolkit)"
-	@echo "  make up-monitoring   Core + Prometheus + Grafana"
+	@echo "  make up-monitoring   Core + Prometheus + Grafana + Jaeger (OpenTelemetry)"
 	@echo "  make up-all          Everything (GPU/Triton + monitoring)"
 	@echo "  make down            Stop and remove containers"
 	@echo "  make build           Rebuild all images"
@@ -58,10 +58,10 @@ up-gpu: .env
 up-triton: up-gpu
 
 up-monitoring: .env
-	$(DC) --profile monitoring up -d --remove-orphans
+	OTEL_TRACES_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 $(DC) --profile monitoring up -d --remove-orphans
 
 up-all: .env
-	$(GPU_DC) --profile monitoring up -d --remove-orphans
+	OTEL_TRACES_ENABLED=true OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 $(GPU_DC) --profile monitoring up -d --remove-orphans
 
 down:
 	$(DC) down

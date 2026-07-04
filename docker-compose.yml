@@ -24,6 +24,10 @@ x-service-defaults: &service-defaults
   networks:
     - backend
 
+x-otel-env: &otel-env
+  OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Infrastructure
 # ─────────────────────────────────────────────────────────────────────────────
@@ -110,6 +114,8 @@ services:
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8001"]
     env_file: .env
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: auth_service
       DATABASE_URL:               postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       AUTO_CREATE_TABLES:         "false"
       JWT_SECRET_KEY:             ${JWT_SECRET_KEY:-dev-secret-change-in-prod}
@@ -141,6 +147,8 @@ services:
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8002"]
     env_file: .env
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: upload_service
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       AUTO_CREATE_TABLES: "false"
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-change-in-prod}
@@ -171,6 +179,8 @@ services:
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8003"]
     env_file: .env
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: analysis_service
       DATABASE_URL:         postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       SYNC_DATABASE_URL:    postgresql+psycopg2://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       AUTO_CREATE_TABLES:   "false"
@@ -221,6 +231,8 @@ services:
       start_period: 40s
     env_file: .env
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: analysis_worker
       DATABASE_URL:          postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       SYNC_DATABASE_URL:     postgresql+psycopg2://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       REDIS_URL:             redis://redis:6379/0
@@ -250,6 +262,8 @@ services:
     image: medvision/gradcam_service:dev
     env_file: .env
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: gradcam_service
       MODEL_REPO_ROOT:    /models
       HEATMAP_OUTPUT_DIR: /data/heatmaps
       HEATMAP_ALPHA:      "0.5"
@@ -293,6 +307,8 @@ services:
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8005"]
     env_file: .env
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: report_service
       DATABASE_URL:       postgresql+asyncpg://${POSTGRES_USER:-medvision}:${POSTGRES_PASSWORD:-medvision}@postgres:5432/${POSTGRES_DB:-medvision}
       AUTO_CREATE_TABLES: "false"
       OLLAMA_URL:         http://ollama:11434
@@ -353,6 +369,16 @@ services:
 # ─────────────────────────────────────────────────────────────────────────────
 # Observability (enable with: docker compose --profile monitoring up)
 # ─────────────────────────────────────────────────────────────────────────────
+  jaeger:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # UI
+      - "4318:4318"     # OTLP HTTP
+
   prometheus:
     <<: *service-defaults
     profiles: [monitoring]

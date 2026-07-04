@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # ONNX Runtime providers in priority order
     ort_providers: list[str] = ["CPUExecutionProvider"]
 
+    otel_traces_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = ""
+
     environment: str = "development"
     log_level: str = "INFO"
     docs_enabled: bool = True

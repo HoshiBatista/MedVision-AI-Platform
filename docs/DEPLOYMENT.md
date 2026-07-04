@@ -6,7 +6,7 @@
 |---|---|---|
 | Local dev | Docker Compose | `make up` (CPU) or `make up-gpu` (GPU) |
 | Staging | Docker Compose on a VM | same compose file, `.env` overrides |
-| Production | Kubernetes + Helm | **planned** — `infra/helm/` / `infra/terraform/` are empty scaffolding |
+| Production | Kubernetes + Helm | `infra/helm/medvision` umbrella chart |
 
 ---
 
@@ -58,7 +58,7 @@ Services started (default / CPU):
 
 Optional profiles:
 - `--profile triton` (via `make up-gpu`) → `triton` on :8010 (HTTP) / :8011 (gRPC) / :8012 (metrics)
-- `--profile monitoring` (via `make up-monitoring`) → `prometheus` :9090, `grafana` :3001
+- `--profile monitoring` (via `make up-monitoring`) → `prometheus` :9090, `grafana` :3001, `jaeger` :16686 (UI) / :4318 (OTLP HTTP)
 
 ### GPU requirement
 
@@ -114,12 +114,19 @@ docker compose exec auth_service alembic upgrade head   # one service
 
 ---
 
-## Kubernetes / Helm (planned)
+## Kubernetes / Helm
 
-`infra/helm/` and `infra/terraform/` are empty placeholders — there is no working chart yet.
-A production K8s deployment would need: a chart per service (Deployment/Service/Ingress),
-PVCs for the study/heatmap volumes, a GPU node pool for `triton`/`ollama`, an HPA on the
-Celery worker, and secrets in K8s Secrets / a vault.
+Production deployments use the umbrella chart at `infra/helm/medvision` (mirrors the
+docker-compose stack). See `infra/helm/README.md` for storage prerequisites, CPU/GPU
+profiles, and CI/CD workflows.
+
+```bash
+make helm-lint
+make helm-install   # helm upgrade --install against your cluster
+```
+
+Optional Jaeger tracing: set `jaeger.enabled=true` and `otel.tracesEnabled=true` in
+values (or `--set jaeger.enabled=true --set otel.tracesEnabled=true`).
 
 ---
 
@@ -128,7 +135,7 @@ Celery worker, and secrets in K8s Secrets / a vault.
 - **Prometheus** (`--profile monitoring`): scrapes every `/metrics`. Config: `infra/monitoring/prometheus.yml`. UI: `http://localhost:9090`.
 - **Grafana**: dashboards in `infra/monitoring/grafana/dashboards/`. UI: `http://localhost:3001` (default `admin`/`admin`).
 - **Alerting**: rules in `infra/monitoring/alerts.yml` (service down, 5xx rate, inference latency, Celery queue depth).
-- **Tracing (OpenTelemetry → Jaeger)**: planned, not yet wired.
+- **Tracing (OpenTelemetry → Jaeger)**: enabled automatically by `make up-monitoring`. All Python services export OTLP HTTP spans (FastAPI requests, SQLAlchemy queries, httpx calls to Ollama/GradCAM, Triton/ONNX inference, Celery tasks). UI: `http://localhost:16686`. Env: `OTEL_TRACES_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (see `.env.example`).
 
 ---
 

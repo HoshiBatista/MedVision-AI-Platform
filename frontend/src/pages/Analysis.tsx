@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/components/Layout/AppLayout";
 import { DicomViewer, type DicomViewerHandle } from "@/components/DicomViewer/DicomViewer";
@@ -7,12 +7,14 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { AnalysisAPI } from "@/api/analysis";
 import { GradCAMAPI } from "@/api/gradcam";
 import { ReportAPI } from "@/api/reports";
+import { UploadAPI } from "@/api/upload";
 import { errMessage } from "@/api/client";
 import { usePolling } from "@/lib/usePolling";
+import { fmtDate } from "@/lib/format";
+import { heatmapStaticUrl, studyStaticUrl } from "@/lib/studyUrl";
 import { useStudyStore } from "@/store/study";
 import { toast } from "@/store/toast";
-import { fmtDate } from "@/lib/format";
-import type { JobResult, Task } from "@/types";
+import type { JobResult, Modality, Task } from "@/types";
 
 const MODEL_MAP: Record<Task, string> = {
   segmentation: "mri_segmentation",
@@ -20,7 +22,10 @@ const MODEL_MAP: Record<Task, string> = {
   classification: "skin_classification",
 };
 
-const basename = (p: string) => p.split("/").pop() || "";
+function resolveJobId(job: JobResult | null): string {
+  if (!job) return "";
+  return job.job_id || job.id || "";
+}
 
 function NoJob() {
   const navigate = useNavigate();
@@ -29,11 +34,16 @@ function NoJob() {
       <div className="empty-icon"></div>
       <div className="empty-title">No analysis selected</div>
       <div className="empty-sub">
-        Upload a study first, or pass a job ID in the URL: ?job=&lt;id&gt;
+        Pick a job from History or upload a new study.
       </div>
-      <button className="btn btn-primary mt-16" onClick={() => navigate("/upload")}>
-        Upload Study
-      </button>
+      <div className="flex gap-10 mt-16">
+        <button className="btn btn-primary" onClick={() => navigate("/history")}>
+          Open History
+        </button>
+        <button className="btn btn-secondary" onClick={() => navigate("/upload")}>
+          Upload Study
+        </button>
+      </div>
     </div>
   );
 }
@@ -41,37 +51,50 @@ function NoJob() {
 export function Analysis() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const jobId = params.get("job");
+  const jobIdParam = params.get("job");
   const currentJob = useStudyStore((s) => s.currentJob);
   const setCurrentReportId = useStudyStore((s) => s.setCurrentReportId);
 
   const viewerRef = useRef<DicomViewerHandle>(null);
   const [job, setJob] = useState<JobResult | null>(null);
+  const [modality, setModality] = useState<Modality>(currentJob?.modality || "MRI");
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [showBoxes, setShowBoxes] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [heatmapReady, setHeatmapReady] = useState(false);
   const [explaining, setExplaining] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  const modality = currentJob?.modality || "MRI";
-
   usePolling<JobResult>(
     async () => {
-      const result = await AnalysisAPI.getResult(jobId!);
+      const result = await AnalysisAPI.getResult(jobIdParam!);
       setJob(result);
       return result;
     },
     3000,
     (j) => j.status === "completed" || j.status === "failed",
-    !!jobId,
-    [jobId],
+    !!jobIdParam,
+    [jobIdParam],
   );
 
-  const imageSrc = useMemo(() => {
-    const path = job?.results?.image_path;
-    return path ? `/static/studies/${basename(path)}` : null;
+  useEffect(() => {
+    if (!job) return;
+
+    const imagePath = job.results?.image_path;
+    if (imagePath) {
+      setImageSrc(studyStaticUrl(imagePath));
+      return;
+    }
+
+    void UploadAPI.getStudy(job.study_id)
+      .then((study) => {
+        setImageSrc(studyStaticUrl(study.file_path));
+        setModality(study.modality);
+      })
+      .catch(() => setImageSrc(null));
   }, [job]);
 
+  const jobId = useMemo(() => resolveJobId(job), [job]);
   const findings = job?.results?.findings ?? [];
   const isDone = job?.status === "completed";
 
@@ -94,15 +117,15 @@ export function Analysis() {
   };
 
   const requestHeatmap = async () => {
-    if (!job?.results) return;
+    if (!job?.results?.image_path) return;
     setExplaining(true);
     try {
       const res = await GradCAMAPI.explain(
         MODEL_MAP[job.task],
-        job.results.image_path || "",
+        job.results.image_path,
         job.results.findings?.[0]?.class_id ?? null,
       );
-      await viewerRef.current?.loadHeatmap(`/static/heatmaps/${basename(res.heatmap_path)}`);
+      await viewerRef.current?.loadHeatmap(heatmapStaticUrl(res.heatmap_path));
       setHeatmapReady(true);
       toast("Heatmap ready — click Heatmap to toggle", "success");
     } catch (err) {
@@ -113,14 +136,14 @@ export function Analysis() {
   };
 
   const generateReport = async () => {
-    if (!job?.results) return;
+    if (!job?.results || !jobId) return;
     setGenerating(true);
     try {
       const f = job.results;
       const report = await ReportAPI.generate({
         study_id: currentJob?.study_id || job.study_id,
         modality,
-        job_ids: [job.id],
+        job_ids: [jobId],
         findings: {
           confidence: f.top_confidence,
           regions: f.findings || [],
@@ -150,11 +173,10 @@ export function Analysis() {
         </button>
       }
     >
-      {!jobId ? (
+      {!jobIdParam ? (
         <NoJob />
       ) : (
         <div className="analysis-layout">
-          {/* Left: viewer */}
           <div>
             <div className="card fade-in">
               <div className="card-header">
@@ -209,7 +231,6 @@ export function Analysis() {
             </div>
           </div>
 
-          {/* Right: results */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div className="card fade-in fade-in-1">
               <div className="card-header">
@@ -222,16 +243,14 @@ export function Analysis() {
                     Job ID
                   </span>
                   <span className="mono" style={{ fontSize: 12 }}>
-                    {job?.id || "—"}
+                    {jobId || "—"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted" style={{ fontSize: 13 }}>
                     Task
                   </span>
-                  <span>
-                    {job ? job.task : "—"}
-                  </span>
+                  <span>{job ? job.task : "—"}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted" style={{ fontSize: 13 }}>
@@ -303,7 +322,7 @@ export function Analysis() {
                   </button>
                   <button
                     className="btn btn-secondary btn-full"
-                    disabled={explaining}
+                    disabled={explaining || !job.results?.image_path}
                     onClick={requestHeatmap}
                   >
                     {explaining ? (

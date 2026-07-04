@@ -80,6 +80,7 @@ def run_analysis(self: Task, job_id: str) -> dict[str, Any]:
             elapsed = time.perf_counter() - start
             results: dict[str, Any] = {
                 **infer_result,
+                "image_path": file_path,
                 "heatmap_path": heatmap_path,
                 "processing_time_s": round(elapsed, 3),
             }

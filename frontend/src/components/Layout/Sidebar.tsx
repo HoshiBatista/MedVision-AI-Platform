@@ -3,8 +3,9 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/store/auth";
 import { capitalize } from "@/lib/format";
 
-const NAV = [
+const WORKSPACE_NAV = [
   { to: "/upload", label: "Upload" },
+  { to: "/history", label: "History" },
   { to: "/analysis", label: "Analysis" },
   { to: "/report", label: "Reports" },
 ];
@@ -21,6 +22,7 @@ export function Sidebar() {
 
   const displayName = user?.full_name || user?.email || "Loading…";
   const avatar = (user?.full_name || user?.email || "?")[0].toUpperCase();
+  const isAdmin = user?.role === "admin";
 
   const handleLogout = async () => {
     await logout();
@@ -39,7 +41,7 @@ export function Sidebar() {
 
       <div className="sidebar-nav">
         <div className="nav-section-label">Workspace</div>
-        {NAV.map((item) => (
+        {WORKSPACE_NAV.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -48,6 +50,20 @@ export function Sidebar() {
             {item.label}
           </NavLink>
         ))}
+
+        {isAdmin && (
+          <>
+            <div className="nav-section-label" style={{ marginTop: 16 }}>
+              Administration
+            </div>
+            <NavLink
+              to="/admin"
+              className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            >
+              Users
+            </NavLink>
+          </>
+        )}
       </div>
 
       <div className="sidebar-footer">

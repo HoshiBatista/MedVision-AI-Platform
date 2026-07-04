@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin"
 
+    # OpenTelemetry (disabled when otel_exporter_otlp_endpoint is empty)
+    otel_traces_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = ""
+
     # App
     environment: str = "development"
     log_level: str = "INFO"

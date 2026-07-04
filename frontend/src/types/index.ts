@@ -21,6 +21,15 @@ export interface User {
   full_name?: string | null;
   role: string;
   is_active?: boolean;
+  created_at?: string;
+}
+
+export type UserRole = "admin" | "user" | "radiologist";
+
+export interface AdminUpdateUserRequest {
+  full_name?: string | null;
+  role?: UserRole;
+  is_active?: boolean;
 }
 
 /* ── Upload ─────────────────────────────────────────────────────────────── */
@@ -28,6 +37,23 @@ export interface UploadResponse {
   study_id: string;
   status: string;
   storage_path: string;
+}
+
+export interface Study {
+  id: string;
+  user_id: number;
+  modality: Modality;
+  original_filename: string;
+  file_path: string;
+  file_size_bytes: number;
+  status: string;
+  meta?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface StudyListResponse {
+  items: Study[];
+  total: number;
 }
 
 /* ── Analysis ───────────────────────────────────────────────────────────── */
@@ -51,8 +77,8 @@ export interface AnalysisResults {
 }
 
 export interface JobResult {
-  id: string;
-  job_id?: string;
+  id?: string;
+  job_id: string;
   study_id: string;
   task: Task;
   status: JobStatus;
@@ -60,6 +86,21 @@ export interface JobResult {
   error?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface JobSummary {
+  job_id: string;
+  study_id: string;
+  task: Task;
+  status: JobStatus;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobListResponse {
+  items: JobSummary[];
+  total: number;
 }
 
 export interface JobQueuedResponse {

@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { JobQueuedResponse, JobResult, Task } from "@/types";
+import type { JobListResponse, JobQueuedResponse, JobResult, Task } from "@/types";
 
 export const AnalysisAPI = {
   async analyze(
@@ -11,6 +11,13 @@ export const AnalysisAPI = {
       study_id: studyId,
       task,
       config,
+    });
+    return data;
+  },
+
+  async listJobs(limit = 50, offset = 0, studyId?: string): Promise<JobListResponse> {
+    const { data } = await api.get<JobListResponse>("/results", {
+      params: { limit, offset, ...(studyId ? { study_id: studyId } : {}) },
     });
     return data;
   },

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     llm_request_timeout: float = 300.0  # one generation call
     llm_pull_timeout: float = 3600.0    # first-run weight download
 
+    otel_traces_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = ""
+
     environment: str = "development"
     log_level: str = "INFO"
     docs_enabled: bool = True

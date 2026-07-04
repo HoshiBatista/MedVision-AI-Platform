@@ -44,6 +44,22 @@ def test_results_unknown_job_404(client):
     assert client.get(f"{RESULTS}00000000-0000-0000-0000-000000000000").status_code == 404
 
 
+def test_results_list_for_user(client):
+    job_id = client.post(
+        ANALYZE, json={"study_id": STUDY_ID, "task": "detection"}
+    ).json()["job_id"]
+
+    res = client.get(RESULTS)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["total"] >= 1
+    assert any(item["job_id"] == job_id for item in body["items"])
+
+
+def test_results_list_requires_auth(anon_client):
+    assert anon_client.get(RESULTS).status_code == 401
+
+
 def test_endpoints_require_auth(anon_client):
     assert anon_client.post(ANALYZE, json={"study_id": STUDY_ID, "task": "detection"}).status_code == 401
     assert anon_client.get(f"{RESULTS}whatever").status_code == 401

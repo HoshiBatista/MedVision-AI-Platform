@@ -25,4 +25,10 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: false,
   },
+  optimizeDeps: {
+    exclude: ["@cornerstonejs/dicom-image-loader"],
+  },
+  worker: {
+    format: "es",
+  },
 });

@@ -91,6 +91,20 @@ Async (asyncpg) DATABASE_URL pointing at the in-cluster postgres service.
 {{- end -}}
 
 {{/*
+OpenTelemetry OTLP HTTP endpoint. Uses otel.exporterEndpoint when set; otherwise,
+when Jaeger is enabled, points at the in-cluster Jaeger collector.
+*/}}
+{{- define "medvision.otelEndpoint" -}}
+{{- if .Values.otel.exporterEndpoint -}}
+{{- .Values.otel.exporterEndpoint -}}
+{{- else if .Values.jaeger.enabled -}}
+{{- printf "http://%s-jaeger:%v" (include "medvision.fullname" .) .Values.jaeger.otlpHttpPort -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Shared (non-secret) application config — rendered into the ConfigMap and hashed
 into a checksum annotation on the workloads. Defined as a named template (not a
 file include) so it resolves when a single template is rendered in isolation
@@ -118,4 +132,6 @@ CELERY_BROKER_URL: {{ printf "redis://%s/1" (include "medvision.redisHost" .) | 
 CELERY_RESULT_BACKEND: {{ printf "redis://%s/2" (include "medvision.redisHost" .) | quote }}
 LLM_MODEL_NAME: {{ .Values.llm.modelName | quote }}
 LLM_MAX_NEW_TOKENS: {{ .Values.llm.maxNewTokens | quote }}
+OTEL_TRACES_ENABLED: {{ .Values.otel.tracesEnabled | quote }}
+OTEL_EXPORTER_OTLP_ENDPOINT: {{ include "medvision.otelEndpoint" . | quote }}
 {{- end -}}

@@ -240,3 +240,15 @@ podSecurityContext:
 serviceAccount:
   create: true
   name: ""
+
+# ── Observability ────────────────────────────────────────────────────────────
+jaeger:
+  enabled: false
+  image: jaegertracing/all-in-one:1.62.0
+  uiPort: 16686
+  otlpHttpPort: 4318
+
+otel:
+  tracesEnabled: false
+  # When jaeger.enabled=true, leave empty to auto-point at the in-cluster Jaeger OTLP endpoint.
+  exporterEndpoint: ""

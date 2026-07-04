@@ -73,7 +73,7 @@ data:
             proxy_set_header   X-Real-IP         $remote_addr;
             proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         }
-        location /api/v1/results/ {
+        location /api/v1/results {
             limit_req zone=api_rl burst=30 nodelay;
             proxy_pass         http://analysis_service;
             proxy_set_header   Host              $host;

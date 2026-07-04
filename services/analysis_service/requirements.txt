@@ -17,3 +17,10 @@ Pillow==11.0.0
 pydicom==3.0.1
 prometheus-client==0.21.1
 prometheus-fastapi-instrumentator==7.0.0
+opentelemetry-api==1.28.2
+opentelemetry-sdk==1.28.2
+opentelemetry-exporter-otlp-proto-http==1.28.2
+opentelemetry-instrumentation-fastapi==0.49b2
+opentelemetry-instrumentation-sqlalchemy==0.49b2
+opentelemetry-instrumentation-httpx==0.49b2
+opentelemetry-instrumentation-celery==0.49b2

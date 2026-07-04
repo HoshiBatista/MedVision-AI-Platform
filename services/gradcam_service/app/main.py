@@ -6,6 +6,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from app.api.v1 import router as api_v1_router
 from app.core.config import settings
 from app.core.logging_config import configure_logging
+from app.core.telemetry import setup_telemetry
 
 configure_logging("gradcam_service")
 logger = structlog.get_logger()
@@ -25,6 +26,13 @@ app.add_middleware(
 )
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+setup_telemetry(
+    app=app,
+    service_name="gradcam_service",
+    enabled=settings.otel_traces_enabled,
+    otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+)
 
 app.include_router(api_v1_router, prefix="/api/v1")
 

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     max_upload_size_mb: int = 512
 
+    otel_traces_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = ""
+
     environment: str = "development"
     log_level: str = "INFO"
     docs_enabled: bool = True

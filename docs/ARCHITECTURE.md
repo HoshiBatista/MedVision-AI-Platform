@@ -156,7 +156,9 @@ Every FastAPI service exposes:
 
 Prometheus + Grafana are wired (enable with `--profile monitoring`); dashboards live in
 `infra/monitoring/grafana/dashboards/`, alert rules in `infra/monitoring/alerts.yml`.
-Distributed tracing (OpenTelemetry → Jaeger) is planned, not yet wired.
+Distributed tracing uses OpenTelemetry OTLP export to Jaeger (same monitoring profile;
+`make up-monitoring` sets `OTEL_TRACES_ENABLED=true`). Spans cover HTTP handlers,
+SQLAlchemy queries, outbound httpx calls, Triton/ONNX inference, and Celery tasks.
 
 ---
 

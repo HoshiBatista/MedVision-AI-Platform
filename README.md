@@ -35,10 +35,10 @@ All models are exported to ONNX (opset 17) and served either by a local ONNX Run
 | Task Queue | Celery + Redis |
 | Storage | Local filesystem (`/data/studies`, `/data/heatmaps`) + PostgreSQL (metadata) |
 | Gateway | Nginx + JWT |
-| Observability | Prometheus + Grafana (OpenTelemetry/Jaeger planned) |
+| Observability | Prometheus + Grafana + OpenTelemetry → Jaeger |
 | Report Generation | Local LLM via Ollama (default OpenBioLLM-8B) — no external API |
 | Frontend | React + TypeScript + Vite |
-| Containers | Docker Compose (dev); Helm/K8s scaffolding planned |
+| Containers | Docker Compose (dev); Helm/K8s |
 
 ---
 
@@ -98,7 +98,7 @@ variant layers `docker-compose.gpu.yml` on top of the base stack.
 │   └── gradcam_service/   EigenCAM explainability (ONNX, CPU)
 ├── triton_models/         ONNX model repository (served by ONNX Runtime or Triton)
 ├── frontend/              React UI
-├── infra/                 Prometheus/Grafana config (Helm/Terraform: planned, empty)
+├── infra/                 Prometheus/Grafana/Jaeger config + Helm charts
 └── tests/                 Integration + E2E test suites
 ```
 

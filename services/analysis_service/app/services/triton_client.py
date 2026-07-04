@@ -23,6 +23,7 @@ from PIL import Image
 
 from app.core.config import settings
 from app.core.metrics import TRITON_INFER_DURATION_SECONDS, TRITON_INFER_ERRORS_TOTAL
+from app.core.telemetry import traced_span
 
 logger = structlog.get_logger()
 
@@ -146,24 +147,30 @@ class TritonClient:
 
         start = time.perf_counter()
         try:
-            if task == "segmentation":
-                outputs = [
-                    httpclient.InferRequestedOutput("output0"),
-                    httpclient.InferRequestedOutput("output1"),
-                ]
-                result = self._client.infer(
-                    model_name=model_name, inputs=[infer_input], outputs=outputs
-                )
-                out0 = result.as_numpy("output0")
-                out1 = result.as_numpy("output1")
-                findings = _postprocess_segmentation(out0, out1, orig_w, orig_h)
-            else:
-                outputs = [httpclient.InferRequestedOutput("output0")]
-                result = self._client.infer(
-                    model_name=model_name, inputs=[infer_input], outputs=outputs
-                )
-                out0 = result.as_numpy("output0")
-                findings = _postprocess_detection(out0, orig_w, orig_h)
+            with traced_span(
+                "triton.infer",
+                enabled=settings.otel_traces_enabled,
+                otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+                attributes={"model.name": model_name, "task": task},
+            ):
+                if task == "segmentation":
+                    outputs = [
+                        httpclient.InferRequestedOutput("output0"),
+                        httpclient.InferRequestedOutput("output1"),
+                    ]
+                    result = self._client.infer(
+                        model_name=model_name, inputs=[infer_input], outputs=outputs
+                    )
+                    out0 = result.as_numpy("output0")
+                    out1 = result.as_numpy("output1")
+                    findings = _postprocess_segmentation(out0, out1, orig_w, orig_h)
+                else:
+                    outputs = [httpclient.InferRequestedOutput("output0")]
+                    result = self._client.infer(
+                        model_name=model_name, inputs=[infer_input], outputs=outputs
+                    )
+                    out0 = result.as_numpy("output0")
+                    findings = _postprocess_detection(out0, orig_w, orig_h)
 
         except Exception as exc:
             TRITON_INFER_ERRORS_TOTAL.labels(model=model_name, error_type=type(exc).__name__).inc()
